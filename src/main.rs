@@ -1,5 +1,7 @@
 #![feature(unchecked_shifts)]
 
+pub mod board;
+
 macro_rules! color {
 	($rgb:expr) => {
 		Color32::from_rgb(
@@ -16,6 +18,8 @@ use eframe::{
 };
 use log::info;
 
+use crate::board::{Board, Piece, PieceColor, PieceType};
+
 fn main() -> Result<(), eframe::Error>
 {
 	dotenv::dotenv().expect("Could not parse variables fromn .env file!");
@@ -29,12 +33,15 @@ fn main() -> Result<(), eframe::Error>
 	};
 
 	info!("starting");
+	let mut app = Application::default();
+	app.board[0] = Some(Piece::new(PieceColor::White, PieceType::Queen));
+
 	eframe::run_native(
 		"Chess",
 		options,
 		Box::new(|cc| {
 			egui_extras::install_image_loaders(&cc.egui_ctx);
-			Box::<Application>::default()
+			Box::new(app)
 		}),
 	)
 }
@@ -43,6 +50,7 @@ struct Application
 {
 	dark_square_color: Hsva,
 	light_square_color: Hsva,
+	board: Board,
 }
 
 impl Default for Application
@@ -52,6 +60,7 @@ impl Default for Application
 		Self {
 			dark_square_color: hsva_from_color32(color!(0xb58863)),
 			light_square_color: hsva_from_color32(color!(0xf0d9b5)),
+			board: Default::default(),
 		}
 	}
 }
