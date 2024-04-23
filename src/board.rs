@@ -1,3 +1,7 @@
+use std::fmt::Display;
+
+use eframe::egui::Vec2;
+
 #[derive(Debug)]
 pub struct Board
 {
@@ -29,10 +33,95 @@ impl std::ops::IndexMut<usize> for Board
 
 impl Board
 {
+	pub fn from_fen_string(fen: &str) -> Option<Self>
+	{
+		// TODO: this sucks
+		let mut pieces: [Option<Piece>; 64] = [None; 64];
+		let mut cursor = 0;
+
+		for ch in fen.chars()
+		{
+			if ch == '/'
+			{
+				continue;
+			}
+
+			if let Some(skip) = ch.to_digit(10)
+			{
+				cursor += skip;
+			}
+			else
+			{
+				pieces[cursor as usize] = Piece::from_char(ch);
+				cursor += 1;
+			}
+		}
+
+		Some(Self { pieces })
+	}
+
 	pub fn set_piece_at(&mut self, index: usize, piece: Option<Piece>) -> &mut Self
 	{
 		self.pieces[index] = piece;
 		self
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoardPos
+{
+	tile_index: u8,
+}
+impl From<Vec2> for BoardPos
+{
+	fn from(value: Vec2) -> Self
+	{
+		Self {
+			tile_index: 8 * (value.y.clamp(0.0, 8.0) as u8)
+				+ (value.x.clamp(0.0, 8.0) as u8).clamp(0, 7),
+		}
+	}
+}
+impl BoardPos
+{
+	pub const fn from_index(tile_index: usize) -> Self
+	{
+		Self {
+			tile_index: tile_index as u8,
+		}
+	}
+
+	pub const fn rank(self) -> u8
+	{
+		7 - (self.tile_index / 8)
+	}
+	pub const fn top_down_rank(self) -> u8
+	{
+		self.tile_index / 8
+	}
+	pub const fn file(self) -> u8
+	{
+		self.tile_index % 8
+	}
+	pub const fn rank_file(self) -> (u8, u8)
+	{
+		(self.rank(), self.file())
+	}
+	pub const fn index(self) -> usize
+	{
+		self.tile_index as usize
+	}
+
+	pub fn file_char(self) -> char
+	{
+		char::from_u32(self.file() as u32 + 97).expect("Invalid file character!")
+	}
+}
+impl Display for BoardPos
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		write!(f, "{}{}", self.file_char(), self.rank() + 1)
 	}
 }
 
@@ -48,13 +137,37 @@ impl Piece
 	{
 		Self { color, piece_type }
 	}
+
+	pub fn from_char(fen_char: char) -> Option<Self>
+	{
+		let piece_type = match fen_char.to_ascii_lowercase()
+		{
+			'p' => PieceType::Pawn,
+			'n' => PieceType::Knight,
+			'b' => PieceType::Bishop,
+			'r' => PieceType::Rook,
+			'q' => PieceType::Queen,
+			'k' => PieceType::King,
+			_ => return None,
+		};
+		let color = if fen_char.is_ascii_uppercase()
+		{
+			PieceColor::White
+		}
+		else
+		{
+			PieceColor::Black
+		};
+
+		Some(Self::new(color, piece_type))
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PieceType
 {
 	Pawn,
-	Bihsop,
+	Bishop,
 	Rook,
 	Knight,
 	Queen,
