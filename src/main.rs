@@ -212,12 +212,7 @@ impl eframe::App for Application
 						if is_held
 						{
 							Image::new(piece.icon())
-								.tint(Color32::from_rgba_premultiplied(
-									255 / 2,
-									255 / 2,
-									255 / 2,
-									255 / 2,
-								))
+								.tint(Color32::from_rgba_premultiplied(0x7f, 0x7f, 0x7f, 0x7f))
 								.paint_at(ui, tile_rect);
 						}
 						else
@@ -248,15 +243,15 @@ impl eframe::App for Application
 
 					if response.drag_started()
 					{
-						self.held_index = Some(board_pos.index())
+						self.held_index = Some(board_pos.index());
+						self.last_interacted_pos = Some(BoardPos::from_index(board_pos.index()));
 					}
 					if response.drag_stopped()
 					{
 						if let Some(old_index) = self.held_index
 						{
-							let new_index = board_pos.index();
-							self.last_interacted_pos = Some(BoardPos::from_index(new_index));
-							self.board[new_index] = self.board[old_index].take();
+							self.last_interacted_pos = Some(board_pos);
+							self.board[board_pos] = self.board[old_index].take();
 							self.held_index = None;
 						}
 					}
