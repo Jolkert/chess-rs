@@ -65,7 +65,7 @@ impl Default for Application
 			board: Default::default(),
 			held_index: None,
 			last_interacted_pos: None,
-			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"),
+			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1"),
 		}
 	}
 }

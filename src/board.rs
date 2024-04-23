@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use eframe::egui::Vec2;
+use lazy_regex::Regex;
 
 #[derive(Debug)]
 pub struct Board
@@ -30,32 +31,61 @@ impl std::ops::IndexMut<usize> for Board
 		&mut self.pieces[index]
 	}
 }
+impl std::ops::Index<BoardPos> for Board
+{
+	type Output = Option<Piece>;
+
+	fn index(&self, index: BoardPos) -> &Self::Output
+	{
+		&self.pieces[index.index()]
+	}
+}
+impl std::ops::IndexMut<BoardPos> for Board
+{
+	fn index_mut(&mut self, index: BoardPos) -> &mut Self::Output
+	{
+		&mut self.pieces[index.index()]
+	}
+}
+
+fn fen_regex() -> &'static Regex
+{
+	lazy_regex::regex!(
+		r"(?<pieces>(?:[pnrbkqPNRBKQ1-8]+/){7}[pnrbkqPNRBKQ1-8]+)\s+(?<to_move>[wb])\s+(?<castle>\-|[KQkq]+)\s(?<en_passant>\-|[a-h][36])\s(?<halfmove>\d+)\s(?<fullmove>\d+)"
+	)
+}
 
 impl Board
 {
 	pub fn from_fen_string(fen: &str) -> Option<Self>
 	{
-		// TODO: this sucks
-		let mut pieces: [Option<Piece>; 64] = [None; 64];
-		let mut cursor = 0;
+		let Some(captures) = fen_regex().captures(fen)
+		else
+		{
+			return None;
+		};
 
-		for ch in fen.chars()
+		let (mut cursor_file, mut cursor_rank) = (0, 0);
+		let mut pieces: [Option<Piece>; 64] = [None; 64];
+		for ch in captures[1].chars()
 		{
 			if ch == '/'
 			{
-				continue;
+				cursor_rank += 1;
+				cursor_file = 0;
 			}
-
-			if let Some(skip) = ch.to_digit(10)
+			else if let Some(skip) = ch.to_digit(10)
 			{
-				cursor += skip;
+				cursor_file += skip;
 			}
 			else
 			{
-				pieces[cursor as usize] = Piece::from_char(ch);
-				cursor += 1;
+				pieces[(cursor_rank * 8 + cursor_file) as usize] = Piece::from_char(ch);
+				cursor_file += 1;
 			}
 		}
+
+		// TODO: this sucks
 
 		Some(Self { pieces })
 	}
@@ -88,6 +118,12 @@ impl BoardPos
 	{
 		Self {
 			tile_index: tile_index as u8,
+		}
+	}
+	pub const fn from_rank_file(rank: u8, file: u8) -> Self
+	{
+		Self {
+			tile_index: 8 * file + rank,
 		}
 	}
 
