@@ -11,7 +11,7 @@ pub struct Board
 	// 2. en passant
 	// 3. legal move checking
 	pieces: [Option<Piece>; 64],
-	to_move: PieceColor,
+	pub to_move: PieceColor,
 }
 impl Default for Board
 {
@@ -224,4 +224,18 @@ pub enum PieceColor
 {
 	White,
 	Black,
+}
+
+impl std::ops::Not for PieceColor
+{
+	type Output = Self;
+
+	fn not(self) -> Self::Output
+	{
+		match self
+		{
+			Self::White => Self::Black,
+			Self::Black => Self::White,
+		}
+	}
 }

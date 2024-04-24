@@ -251,6 +251,8 @@ impl eframe::App for Application
 						BoardPos::from((pointer_pos - board_rect.left_top()) / tile_size);
 
 					if response.drag_started()
+						&& let Some(piece) = self.board[board_pos]
+						&& self.board.to_move == piece.color
 					{
 						self.dragging_index = Some(board_pos.index());
 						self.last_interacted_pos = Some(BoardPos::from_index(board_pos.index()));
@@ -262,6 +264,8 @@ impl eframe::App for Application
 							self.last_interacted_pos = Some(board_pos);
 							self.board[board_pos] = self.board[old_index].take();
 							self.dragging_index = None;
+
+							self.board.to_move = !self.board.to_move;
 						}
 					}
 				}
