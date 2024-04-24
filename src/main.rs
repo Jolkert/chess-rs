@@ -15,7 +15,7 @@ macro_rules! color {
 
 use board::BoardPos;
 use eframe::{
-	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Stroke, Vec2},
+	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Vec2},
 	epaint::Hsva,
 };
 use log::info;
@@ -143,7 +143,7 @@ impl eframe::App for Application
 						Vec2::splat(tile_size),
 					);
 
-					painter.rect(
+					painter.rect_filled(
 						tile_rect,
 						Rounding::ZERO,
 						if (board_pos.file() + board_pos.rank()) % 2 == 0
@@ -154,15 +154,24 @@ impl eframe::App for Application
 						{
 							self.light_square_color
 						},
-						Stroke::NONE,
 					);
 					if is_held && self.board[i].is_some()
 					{
-						painter.rect(
+						painter.rect_filled(
 							tile_rect,
 							Rounding::ZERO,
 							Color32::from_rgba_premultiplied(20, 75, 20, 255 / 2),
-							Stroke::NONE,
+						);
+					}
+					if self.dragging_index.is_some()
+						&& ctx
+							.pointer_latest_pos()
+							.is_some_and(|pos| tile_rect.contains(pos))
+					{
+						painter.rect_filled(
+							tile_rect,
+							Rounding::ZERO,
+							Color32::from_rgba_premultiplied(100, 15, 15, 255 / 2),
 						);
 					}
 
