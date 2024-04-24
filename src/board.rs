@@ -6,13 +6,21 @@ use lazy_regex::Regex;
 #[derive(Debug)]
 pub struct Board
 {
+	// TODO:
+	// 1. castling options
+	// 2. en passant
+	// 3. legal move checking
 	pieces: [Option<Piece>; 64],
+	to_move: PieceColor,
 }
 impl Default for Board
 {
 	fn default() -> Self
 	{
-		Self { pieces: [None; 64] }
+		Self {
+			pieces: [None; 64],
+			to_move: PieceColor::White,
+		}
 	}
 }
 impl std::ops::Index<usize> for Board
@@ -59,11 +67,7 @@ impl Board
 {
 	pub fn from_fen_string(fen: &str) -> Option<Self>
 	{
-		let Some(captures) = fen_regex().captures(fen)
-		else
-		{
-			return None;
-		};
+		let captures = fen_regex().captures(fen)?;
 
 		let (mut cursor_file, mut cursor_rank) = (0, 0);
 		let mut pieces: [Option<Piece>; 64] = [None; 64];
@@ -85,9 +89,14 @@ impl Board
 			}
 		}
 
-		// TODO: this sucks
+		let to_move = match captures[2].chars().nth(0)?
+		{
+			'w' => Some(PieceColor::White),
+			'b' => Some(PieceColor::Black),
+			_ => None,
+		}?;
 
-		Some(Self { pieces })
+		Some(Self { pieces, to_move })
 	}
 
 	pub fn set_piece_at(&mut self, index: usize, piece: Option<Piece>) -> &mut Self

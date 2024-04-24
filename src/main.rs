@@ -51,7 +51,7 @@ struct Application
 	light_square_color: Hsva,
 	last_interacted_pos: Option<BoardPos>,
 	board: Board,
-	held_index: Option<usize>,
+	dragging_index: Option<usize>,
 	fen_string: String,
 }
 
@@ -63,7 +63,7 @@ impl Default for Application
 			dark_square_color: hsva_from_color32(color!(0xb58863)),
 			light_square_color: hsva_from_color32(color!(0xf0d9b5)),
 			board: Default::default(),
-			held_index: None,
+			dragging_index: None,
 			last_interacted_pos: None,
 			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1"),
 		}
@@ -131,7 +131,7 @@ impl eframe::App for Application
 				let tile_size = board_rect.height() / 8.0;
 				for i in 0..64
 				{
-					let is_held = self.held_index.is_some_and(|it| it == i);
+					let is_held = self.dragging_index.is_some_and(|it| it == i);
 					let board_pos = BoardPos::from_index(i);
 
 					let tile_rect = Rect::from_min_size(
@@ -223,7 +223,7 @@ impl eframe::App for Application
 				}
 
 				// draw held piece
-				if let Some(Some(piece)) = self.held_index.map(|i| self.board[i])
+				if let Some(Some(piece)) = self.dragging_index.map(|i| self.board[i])
 				{
 					if let Some(cursor_pos) = ctx.pointer_latest_pos()
 					{
@@ -243,16 +243,16 @@ impl eframe::App for Application
 
 					if response.drag_started()
 					{
-						self.held_index = Some(board_pos.index());
+						self.dragging_index = Some(board_pos.index());
 						self.last_interacted_pos = Some(BoardPos::from_index(board_pos.index()));
 					}
 					if response.drag_stopped()
 					{
-						if let Some(old_index) = self.held_index
+						if let Some(old_index) = self.dragging_index
 						{
 							self.last_interacted_pos = Some(board_pos);
 							self.board[board_pos] = self.board[old_index].take();
-							self.held_index = None;
+							self.dragging_index = None;
 						}
 					}
 				}
