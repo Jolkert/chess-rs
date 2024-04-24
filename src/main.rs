@@ -13,7 +13,7 @@ macro_rules! color {
 	};
 }
 
-use board::BoardPos;
+use board::{BoardPos, Move};
 use eframe::{
 	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Vec2},
 	epaint::Hsva,
@@ -53,6 +53,7 @@ struct Application
 	board: Board,
 	dragging_index: Option<usize>,
 	fen_string: String,
+	legal_moves: Vec<Move>,
 }
 
 impl Default for Application
@@ -66,6 +67,7 @@ impl Default for Application
 			dragging_index: None,
 			last_interacted_pos: None,
 			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1"),
+			legal_moves: Vec::new(),
 		}
 	}
 }
@@ -105,6 +107,14 @@ impl eframe::App for Application
 							last_pos.index()
 						));
 					}
+					ui.heading("Legal moves:");
+					ui.label(
+						self.legal_moves
+							.iter()
+							.map(ToString::to_string)
+							.collect::<Vec<_>>()
+							.join("\n"),
+					)
 				});
 
 				// reserve space for board
@@ -129,6 +139,7 @@ impl eframe::App for Application
 				// draw board
 				let painter = ui.painter();
 				let tile_size = board_rect.height() / 8.0;
+				self.legal_moves = self.board.legal_moves();
 				for i in 0..64
 				{
 					let is_held = self.dragging_index.is_some_and(|it| it == i);
@@ -178,7 +189,14 @@ impl eframe::App for Application
 					// painter.text(
 					// 	tile_rect.left_top(),
 					// 	Align2::LEFT_TOP,
-					// 	i.to_string(),
+					// 	board_pos.index().to_string(),
+					// 	FontId::monospace(10.0),
+					// 	Color32::BLACK,
+					// );
+					// painter.text(
+					// 	tile_rect.left_top() + Vec2::new(0.0, 15.0),
+					// 	Align2::LEFT_TOP,
+					// 	format!("({}, {})", board_pos.file(), board_pos.top_down_rank()),
 					// 	FontId::monospace(10.0),
 					// 	Color32::BLACK,
 					// );
@@ -228,6 +246,19 @@ impl eframe::App for Application
 						{
 							Image::new(piece.icon()).paint_at(ui, tile_rect);
 						}
+					}
+
+					if self.legal_moves.iter().any(|mv| {
+						self.dragging_index
+							.is_some_and(|drag_idx| drag_idx == mv.from.index())
+							&& mv.to == board_pos
+					})
+					{
+						painter.circle_filled(
+							tile_rect.center(),
+							tile_size / 4.0,
+							Color32::from_rgba_premultiplied(100, 20, 20, 0x7f),
+						);
 					}
 				}
 

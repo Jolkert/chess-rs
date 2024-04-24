@@ -56,18 +56,17 @@ impl std::ops::IndexMut<BoardPos> for Board
 	}
 }
 
-fn fen_regex() -> &'static Regex
-{
-	lazy_regex::regex!(
-		r"(?<pieces>(?:[pnrbkqPNRBKQ1-8]+/){7}[pnrbkqPNRBKQ1-8]+)\s+(?<to_move>[wb])\s+(?<castle>\-|[KQkq]+)\s(?<en_passant>\-|[a-h][36])\s(?<halfmove>\d+)\s(?<fullmove>\d+)"
-	)
-}
-
 impl Board
 {
+	fn fen_regex() -> &'static Regex
+	{
+		lazy_regex::regex!(
+			r"(?<pieces>(?:[pnrbkqPNRBKQ1-8]+/){7}[pnrbkqPNRBKQ1-8]+)\s+(?<to_move>[wb])\s+(?<castle>\-|[KQkq]+)\s(?<en_passant>\-|[a-h][36])\s(?<halfmove>\d+)\s(?<fullmove>\d+)"
+		)
+	}
 	pub fn from_fen_string(fen: &str) -> Option<Self>
 	{
-		let captures = fen_regex().captures(fen)?;
+		let captures = Self::fen_regex().captures(fen)?;
 
 		let (mut cursor_file, mut cursor_rank) = (0, 0);
 		let mut pieces: [Option<Piece>; 64] = [None; 64];
@@ -99,10 +98,93 @@ impl Board
 		Some(Self { pieces, to_move })
 	}
 
-	pub fn set_piece_at(&mut self, index: usize, piece: Option<Piece>) -> &mut Self
+	pub fn legal_moves(&self) -> Vec<Move>
 	{
-		self.pieces[index] = piece;
-		self
+		// wow i really hate this - morgan 2024-04-23
+		let movable_pieces = self.pieces.iter().enumerate().filter_map(|it| {
+			it.1.map_or(None, |piece| {
+				if piece.color == self.to_move
+				{
+					Some((it.0, piece))
+				}
+				else
+				{
+					None
+				}
+			})
+		});
+
+		let mut legal_moves = Vec::new();
+		for (index, piece) in movable_pieces
+		{
+			let current_pos = BoardPos::from_index(index);
+			match piece.piece_type
+			{
+				PieceType::Pawn =>
+				{
+					let sign = if piece.color == PieceColor::White
+					{
+						1
+					}
+					else
+					{
+						-1
+					};
+
+					if let Some(forward_one) = current_pos.up(1 * sign)
+						&& self[forward_one].is_none()
+					{
+						legal_moves.push(Move::new(current_pos, forward_one))
+					}
+
+					if (current_pos.rank() == 1 || current_pos.rank() == 6)
+						&& let Some(forward_two) = current_pos.up(2 * sign)
+						&& self[forward_two].is_none()
+					{
+						legal_moves.push(Move::new(current_pos, forward_two));
+					}
+
+					let capture_targets = [
+						current_pos.up(1 * sign).and_then(|it| it.right(1)),
+						current_pos.up(1 * sign).and_then(|it| it.left(1)),
+					]
+					.into_iter()
+					.filter_map(std::convert::identity);
+
+					for target_pos in capture_targets
+					{
+						if self[target_pos].is_some_and(|target| target.color != piece.color)
+						{
+							legal_moves.push(Move::new(current_pos, target_pos))
+						}
+					}
+				}
+				_ => (),
+			}
+		}
+
+		legal_moves
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Move
+{
+	pub from: BoardPos,
+	pub to: BoardPos,
+}
+impl Move
+{
+	pub fn new(from: BoardPos, to: BoardPos) -> Self
+	{
+		Self { from, to }
+	}
+}
+impl Display for Move
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		write!(f, "{} -> {}", self.from, self.to)
 	}
 }
 
@@ -132,7 +214,7 @@ impl BoardPos
 	pub const fn from_rank_file(rank: u8, file: u8) -> Self
 	{
 		Self {
-			tile_index: 8 * file + rank,
+			tile_index: 8 * rank + file,
 		}
 	}
 
@@ -160,6 +242,37 @@ impl BoardPos
 	pub fn file_char(self) -> char
 	{
 		char::from_u32(self.file() as u32 + 97).expect("Invalid file character!")
+	}
+
+	pub fn up(self, distance: i32) -> Option<Self>
+	{
+		let signed_rank = self.top_down_rank() as i32;
+		let new_pos = Self::from_rank_file((signed_rank - distance).clamp(0, 7) as u8, self.file());
+		(self != new_pos).then(|| new_pos)
+	}
+	pub fn down(self, distance: i32) -> Option<Self>
+	{
+		let signed_rank = self.top_down_rank() as i32;
+		let new_pos = Self::from_rank_file((signed_rank + distance).clamp(0, 7) as u8, self.file());
+		(self != new_pos).then(|| new_pos)
+	}
+	pub fn right(self, distance: i32) -> Option<Self>
+	{
+		let signed_file = self.file() as i32;
+		let new_pos = Self::from_rank_file(
+			self.top_down_rank(),
+			(signed_file + distance).clamp(0, 7) as u8,
+		);
+		(self != new_pos).then(|| new_pos)
+	}
+	pub fn left(self, distance: i32) -> Option<Self>
+	{
+		let signed_file = self.file() as i32;
+		let new_pos = Self::from_rank_file(
+			self.top_down_rank(),
+			(signed_file - distance).clamp(0, 7) as u8,
+		);
+		(self != new_pos).then(|| new_pos)
 	}
 }
 impl Display for BoardPos
