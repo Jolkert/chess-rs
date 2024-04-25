@@ -107,14 +107,6 @@ impl eframe::App for Application
 							last_pos.index()
 						));
 					}
-					ui.heading("Legal moves:");
-					ui.label(
-						self.legal_moves
-							.iter()
-							.map(ToString::to_string)
-							.collect::<Vec<_>>()
-							.join("\n"),
-					)
 				});
 
 				// reserve space for board
