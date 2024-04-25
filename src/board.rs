@@ -118,11 +118,11 @@ impl Board
 		for (index, piece) in movable_pieces
 		{
 			let current_pos = BoardPos::from_index(index);
-			match piece.piece_type
+			let valid_targets = match piece.piece_type
 			{
 				PieceType::Pawn =>
 				{
-					let sign = if piece.color == PieceColor::White
+					let direction = if piece.color == PieceColor::White
 					{
 						1
 					}
@@ -131,39 +131,64 @@ impl Board
 						-1
 					};
 
-					if let Some(forward_one) = current_pos.up(1 * sign)
-						&& self[forward_one].is_none()
+					let mut targets = Vec::from([
+						current_pos.up(1 * direction),
+						current_pos.move_by(1, 1 * direction),
+						current_pos.move_by(-1, 1 * direction),
+					]);
+
+					if current_pos.rank() == 1 || current_pos.rank() == 6
 					{
-						legal_moves.push(Move::new(current_pos, forward_one))
+						targets.push(current_pos.up(2 * direction));
 					}
 
-					if (current_pos.rank() == 1 || current_pos.rank() == 6)
-						&& let Some(forward_two) = current_pos.up(2 * sign)
-						&& self[forward_two].is_none()
-					{
-						legal_moves.push(Move::new(current_pos, forward_two));
-					}
-
-					let capture_targets = [
-						current_pos.up(1 * sign).and_then(|it| it.right(1)),
-						current_pos.up(1 * sign).and_then(|it| it.left(1)),
-					]
-					.into_iter()
-					.filter_map(std::convert::identity);
-
-					for target_pos in capture_targets
-					{
-						if self[target_pos].is_some_and(|target| target.color != piece.color)
-						{
-							legal_moves.push(Move::new(current_pos, target_pos))
-						}
-					}
+					targets
 				}
-				_ => (),
+				PieceType::Knight => Vec::from([
+					current_pos.move_by(2, 1),
+					current_pos.move_by(2, -1),
+					current_pos.move_by(-2, 1),
+					current_pos.move_by(-2, -1),
+					current_pos.move_by(1, 2),
+					current_pos.move_by(1, -2),
+					current_pos.move_by(-1, 2),
+					current_pos.move_by(-1, -2),
+				]),
+				PieceType::King => Vec::from([
+					current_pos.up(1),
+					current_pos.down(1),
+					current_pos.right(1),
+					current_pos.left(1),
+					current_pos.move_by(1, 1),
+					current_pos.move_by(1, -1),
+					current_pos.move_by(-1, 1),
+					current_pos.move_by(-1, -1),
+				]),
+				_ => continue,
+			}
+			.into_iter()
+			.filter_map(std::convert::identity);
+
+			for target_pos in valid_targets
+			{
+				if self.can_piece_play(piece, Move::new(current_pos, target_pos))
+				{
+					legal_moves.push(Move::new(current_pos, target_pos));
+				}
 			}
 		}
 
 		legal_moves
+	}
+
+	fn can_piece_play(&self, piece: Piece, mov: Move) -> bool
+	{
+		let can_move_to = piece.piece_type != PieceType::Pawn || mov.from.file() == mov.to.file();
+		let can_capture = piece.piece_type != PieceType::Pawn || mov.from.file() != mov.to.file();
+		let target_piece = self[mov.to];
+
+		(can_move_to && target_piece.is_none())
+			|| (target_piece.is_some_and(|t| can_capture && t.color != piece.color))
 	}
 }
 
@@ -242,6 +267,16 @@ impl BoardPos
 	pub fn file_char(self) -> char
 	{
 		char::from_u32(self.file() as u32 + 97).expect("Invalid file character!")
+	}
+
+	pub fn move_by(self, file_offset: i32, rank_offset: i32) -> Option<BoardPos>
+	{
+		let (signed_rank, signed_file) = (self.top_down_rank() as i32, self.file() as i32);
+		let new_pos = Self::from_rank_file(
+			(signed_rank - rank_offset).clamp(0, 7) as u8,
+			(signed_file + file_offset).clamp(0, 7) as u8,
+		);
+		(self != new_pos).then(|| new_pos)
 	}
 
 	pub fn up(self, distance: i32) -> Option<Self>
