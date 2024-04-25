@@ -181,6 +181,12 @@ impl Board
 		legal_moves
 	}
 
+	pub fn make_move(&mut self, mov: Move)
+	{
+		self.pieces[mov.to.index()] = self.pieces[mov.from.index()].take();
+		self.to_move = !self.to_move;
+	}
+
 	fn sliding_piece_targets(&self, from: BoardPos, axis: SlidingAxis) -> Vec<Option<BoardPos>>
 	{
 		let mut targets = Vec::new();
@@ -302,7 +308,7 @@ impl Display for Move
 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
 	{
-		write!(f, "{} -> {}", self.from, self.to)
+		write!(f, "{} --> {}", self.from, self.to)
 	}
 }
 
@@ -458,7 +464,21 @@ pub enum PieceColor
 	White,
 	Black,
 }
-
+impl Display for PieceColor
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		write!(
+			f,
+			"{}",
+			match self
+			{
+				Self::White => "White",
+				Self::Black => "Black",
+			}
+		)
+	}
+}
 impl std::ops::Not for PieceColor
 {
 	type Output = Self;

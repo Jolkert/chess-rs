@@ -54,6 +54,7 @@ struct Application
 	dragging_index: Option<usize>,
 	fen_string: String,
 	legal_moves: Vec<Move>,
+	last_move: Option<Move>,
 }
 
 impl Default for Application
@@ -68,6 +69,7 @@ impl Default for Application
 			last_interacted_pos: None,
 			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1"),
 			legal_moves: Vec::new(),
+			last_move: None,
 		}
 	}
 }
@@ -94,6 +96,13 @@ impl eframe::App for Application
 					{
 						self.board =
 							Board::from_fen_string(&self.fen_string).expect("Invalid FEN string!");
+					}
+
+					ui.heading("Game information:");
+					ui.label(format!("{} to move", self.board.to_move));
+					if let Some(last_move) = self.last_move
+					{
+						ui.label(format!("Last move: {last_move}"));
 					}
 
 					ui.heading("Last interaction:");
@@ -146,6 +155,7 @@ impl eframe::App for Application
 						Vec2::splat(tile_size),
 					);
 
+					// base square
 					painter.rect_filled(
 						tile_rect,
 						Rounding::ZERO,
@@ -158,7 +168,10 @@ impl eframe::App for Application
 							self.light_square_color
 						},
 					);
-					if is_held && self.board[i].is_some()
+
+					// green highlight for currently moving piece shadow and last move source square
+					if (is_held && self.board[i].is_some())
+						|| self.last_move.is_some_and(|mv| mv.from.index() == i)
 					{
 						painter.rect_filled(
 							tile_rect,
@@ -166,6 +179,18 @@ impl eframe::App for Application
 							Color32::from_rgba_premultiplied(20, 75, 20, 255 / 2),
 						);
 					}
+
+					// darker green highlight for last move destination square
+					if self.last_move.is_some_and(|mv| mv.to.index() == i)
+					{
+						painter.rect_filled(
+							tile_rect,
+							Rounding::ZERO,
+							Color32::from_rgba_premultiplied(20, 50, 20, 255 / 2),
+						);
+					}
+
+					// red highlight for current drag target square
 					if self.dragging_index.is_some()
 						&& ctx
 							.pointer_latest_pos()
@@ -204,6 +229,7 @@ impl eframe::App for Application
 						},
 					);
 
+					// file letters on rank 1
 					if board_pos.rank() == 0
 					{
 						painter.text(
@@ -215,6 +241,7 @@ impl eframe::App for Application
 						);
 					}
 
+					// rank numbers on h file
 					if board_pos.file() == 7
 					{
 						painter.text(
@@ -226,6 +253,7 @@ impl eframe::App for Application
 						);
 					}
 
+					// draw static pieces
 					if let Some(piece) = self.board[i]
 					{
 						if is_held
@@ -240,6 +268,7 @@ impl eframe::App for Application
 						}
 					}
 
+					// draw legal move target circles
 					if self.legal_moves.iter().any(|mv| {
 						self.dragging_index
 							.is_some_and(|drag_idx| drag_idx == mv.from.index())
@@ -285,10 +314,15 @@ impl eframe::App for Application
 						if let Some(old_index) = self.dragging_index
 						{
 							self.last_interacted_pos = Some(board_pos);
-							self.board[board_pos] = self.board[old_index].take();
-							self.dragging_index = None;
 
-							self.board.to_move = !self.board.to_move;
+							let move_attempt =
+								Move::new(BoardPos::from_index(old_index), board_pos);
+							if self.legal_moves.contains(&move_attempt)
+							{
+								self.board.make_move(move_attempt);
+								self.last_move = Some(move_attempt)
+							}
+							self.dragging_index = None;
 						}
 					}
 				}
