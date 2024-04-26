@@ -1,6 +1,6 @@
 use std::{borrow::BorrowMut, fmt::Display};
 
-use eframe::egui::Vec2;
+use eframe::egui::{os, Vec2};
 use lazy_regex::Regex;
 
 #[derive(Debug)]
@@ -167,6 +167,8 @@ impl Board
 					current_pos + Vec2i::new(1, -1),
 					current_pos + Vec2i::new(-1, 1),
 					current_pos + Vec2i::new(-1, -1),
+					current_pos + Vec2i::new(2, 0),
+					current_pos + Vec2i::new(-2, 0),
 				]),
 				PieceType::Queen => self.sliding_piece_targets(current_pos, SlidingAxis::Both),
 				PieceType::Bishop => self.sliding_piece_targets(current_pos, SlidingAxis::Diagonal),
@@ -190,6 +192,7 @@ impl Board
 		let piece = self[mov.from].expect("Tried to make a move from an empty square!");
 		let is_en_passant =
 			piece.is_pawn() && self[mov.to].is_none() && mov.from.file() != mov.to.file();
+		let is_castle = piece.piece_type == PieceType::King && mov.offset().file.abs() > 1;
 
 		self[mov.to] = self[mov.from].take();
 		if is_en_passant
@@ -197,10 +200,29 @@ impl Board
 			self[(mov.to - piece.forward_vector()).expect("En passant broke")] = None;
 		}
 
+		if is_castle
+		{
+			let direction = mov.offset().normalized();
+			let rook_position = if direction == Vec2i::LEFT
+			{
+				mov.from.to_left_edge()
+			}
+			else
+			{
+				mov.from.to_right_edge()
+			};
+
+			// log::info!("Move: {mov}; Direction: {direction}; Rook at: {rook_position}");
+
+			self[(mov.from + direction).unwrap()] = self[rook_position].take();
+		}
+
 		self.en_passant_target = (piece.is_pawn() && mov.from.rank().abs_diff(mov.to.rank()) > 1)
 			.then(|| mov.to - piece.forward_vector())
 			.flatten();
 		self.to_move = !self.to_move;
+
+		log::info!("Move offset: {}", mov.offset());
 	}
 
 	fn sliding_piece_targets(&self, from: BoardPos, axis: SlidingAxis) -> Vec<Option<BoardPos>>
@@ -256,7 +278,40 @@ impl Board
 			&& (target_piece.is_some_and(|p| p.color != piece.color)
 				|| self.en_passant_target.is_some_and(|sq| sq == mov.to));
 
-		move_allowed || capture_allowed
+		// this castle detection is a nightmare -morgan 2024-04-26
+		let castle_allowed = if piece.piece_type == PieceType::King
+		{
+			let movement_direction = mov.offset().normalized();
+			let rook_position = if movement_direction == Vec2i::LEFT
+			{
+				mov.from.to_left_edge()
+			}
+			else
+			{
+				mov.from.to_right_edge()
+			};
+
+			// log::info!("{mov}; relevant rook at: {}", rook_position);
+
+			if let Some(piece) = self[rook_position]
+				&& piece.piece_type == PieceType::Rook
+			{
+				self.can_piece_play(
+					piece,
+					Move::new(rook_position, (mov.from + movement_direction).unwrap()),
+				)
+			}
+			else
+			{
+				false
+			}
+		}
+		else
+		{
+			false
+		};
+
+		move_allowed || capture_allowed || castle_allowed
 	}
 }
 
@@ -277,6 +332,14 @@ impl Vec2i
 	{
 		Self { file, rank }
 	}
+
+	pub fn normalized(self) -> Self
+	{
+		Self::new(
+			self.file.checked_div(self.file.abs()).unwrap_or_default(),
+			self.rank.checked_div(self.rank.abs()).unwrap_or_default(),
+		)
+	}
 }
 impl std::ops::Neg for Vec2i
 {
@@ -294,6 +357,13 @@ impl std::ops::Mul<i32> for Vec2i
 	fn mul(self, rhs: i32) -> Self::Output
 	{
 		Self::new(self.file * rhs, self.rank * rhs)
+	}
+}
+impl Display for Vec2i
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		write!(f, "({}, {})", self.file, self.rank)
 	}
 }
 
@@ -327,6 +397,11 @@ impl Move
 	pub fn new(from: BoardPos, to: BoardPos) -> Self
 	{
 		Self { from, to }
+	}
+
+	pub fn offset(self) -> Vec2i
+	{
+		self.to.offset_from(self.from)
 	}
 }
 impl Display for Move
@@ -406,6 +481,23 @@ impl BoardPos
 			});
 
 		new_pos.and_then(|pos| (pos != self).then_some(pos))
+	}
+
+	pub fn offset_from(self, other: Self) -> Vec2i
+	{
+		Vec2i::new(
+			self.file() as i32 - other.file() as i32,
+			self.rank() as i32 - other.rank() as i32,
+		)
+	}
+
+	pub fn to_left_edge(self) -> Self
+	{
+		Self::from_rank_file(self.top_down_rank(), 0)
+	}
+	pub fn to_right_edge(self) -> Self
+	{
+		Self::from_rank_file(self.top_down_rank(), 7)
 	}
 }
 impl Display for BoardPos
