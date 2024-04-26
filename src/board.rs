@@ -1,6 +1,6 @@
 use std::{borrow::BorrowMut, fmt::Display};
 
-use eframe::{egui::Vec2, epaint::EllipseShape};
+use eframe::egui::Vec2;
 use lazy_regex::Regex;
 
 #[derive(Debug)]
