@@ -251,10 +251,12 @@ impl Board
 		let can_capture = !piece.is_pawn() || mov.from.file() != mov.to.file();
 		let target_piece = self[mov.to];
 
-		(can_move_to && target_piece.is_none())
-			|| (can_capture
-				&& (target_piece.is_some_and(|t| t.color != piece.color)
-					|| self.en_passant_target.is_some_and(|it| it == mov.to)))
+		let move_allowed = can_move_to && target_piece.is_none();
+		let capture_allowed = can_capture
+			&& (target_piece.is_some_and(|p| p.color != piece.color)
+				|| self.en_passant_target.is_some_and(|sq| sq == mov.to));
+
+		move_allowed || capture_allowed
 	}
 }
 
