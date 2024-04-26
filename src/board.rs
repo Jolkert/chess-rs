@@ -1,6 +1,6 @@
 use std::{borrow::BorrowMut, fmt::Display};
 
-use eframe::egui::Vec2;
+use eframe::{egui::Vec2, epaint::EllipseShape};
 use lazy_regex::Regex;
 
 #[derive(Debug)]
@@ -11,7 +11,8 @@ pub struct Board
 	// 2. en passant
 	// 3. legal move checking
 	pieces: [Option<Piece>; 64],
-	pub to_move: PieceColor,
+	to_move: PieceColor,
+	en_passant_target: Option<BoardPos>,
 }
 impl Default for Board
 {
@@ -20,6 +21,7 @@ impl Default for Board
 		Self {
 			pieces: [None; 64],
 			to_move: PieceColor::White,
+			en_passant_target: None,
 		}
 	}
 }
@@ -95,7 +97,21 @@ impl Board
 			_ => None,
 		}?;
 
-		Some(Self { pieces, to_move })
+		Some(Self {
+			pieces,
+			to_move,
+			en_passant_target: None,
+		})
+	}
+
+	pub fn to_move(&self) -> PieceColor
+	{
+		self.to_move
+	}
+
+	pub fn en_passant_target(&self) -> Option<BoardPos>
+	{
+		self.en_passant_target
 	}
 
 	pub fn legal_moves(&self) -> Vec<Move>
@@ -183,7 +199,19 @@ impl Board
 
 	pub fn make_move(&mut self, mov: Move)
 	{
-		self.pieces[mov.to.index()] = self.pieces[mov.from.index()].take();
+		let piece = self[mov.from].expect("Tried to make a move from an empty square!");
+		let is_en_passant =
+			piece.is_pawn() && self[mov.to].is_none() && mov.from.file() != mov.to.file();
+
+		self[mov.to] = self[mov.from].take();
+		if is_en_passant
+		{
+			self[(mov.to - piece.forward_vector()).expect("En passant broke")] = None;
+		}
+
+		self.en_passant_target = (piece.is_pawn() && mov.from.rank().abs_diff(mov.to.rank()) > 1)
+			.then(|| mov.to - piece.forward_vector())
+			.flatten();
 		self.to_move = !self.to_move;
 	}
 
@@ -237,12 +265,13 @@ impl Board
 
 	fn can_piece_play(&self, piece: Piece, mov: Move) -> bool
 	{
-		let can_move_to = piece.piece_type != PieceType::Pawn || mov.from.file() == mov.to.file();
-		let can_capture = piece.piece_type != PieceType::Pawn || mov.from.file() != mov.to.file();
+		let can_move_to = !piece.is_pawn() || mov.from.file() == mov.to.file();
+		let can_capture = !piece.is_pawn() || mov.from.file() != mov.to.file();
 		let target_piece = self[mov.to];
 
 		(can_move_to && target_piece.is_none())
-			|| (target_piece.is_some_and(|t| can_capture && t.color != piece.color))
+			|| (can_capture && (target_piece.is_some_and(|t| t.color != piece.color))
+				|| self.en_passant_target.is_some_and(|it| it == mov.to))
 	}
 }
 
@@ -444,6 +473,23 @@ impl Piece
 		};
 
 		Some(Self::new(color, piece_type))
+	}
+
+	pub fn is_pawn(self) -> bool
+	{
+		self.piece_type == PieceType::Pawn
+	}
+
+	pub fn forward_vector(self) -> Vec2i
+	{
+		if self.color == PieceColor::White
+		{
+			Vec2i::new(0, 1)
+		}
+		else
+		{
+			Vec2i::new(0, -1)
+		}
 	}
 }
 

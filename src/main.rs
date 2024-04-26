@@ -99,10 +99,14 @@ impl eframe::App for Application
 					}
 
 					ui.heading("Game information:");
-					ui.label(format!("{} to move", self.board.to_move));
+					ui.label(format!("{} to move", self.board.to_move()));
 					if let Some(last_move) = self.last_move
 					{
 						ui.label(format!("Last move: {last_move}"));
+					}
+					if let Some(en_passant) = self.board.en_passant_target()
+					{
+						ui.label(format!("En passant target square: {en_passant}"));
 					}
 
 					ui.heading("Last interaction:");
@@ -304,7 +308,7 @@ impl eframe::App for Application
 
 					if response.drag_started()
 						&& let Some(piece) = self.board[board_pos]
-						&& self.board.to_move == piece.color
+						&& self.board.to_move() == piece.color
 					{
 						self.dragging_index = Some(board_pos.index());
 						self.last_interacted_pos = Some(BoardPos::from_index(board_pos.index()));
