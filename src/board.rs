@@ -138,24 +138,17 @@ impl Board
 			{
 				PieceType::Pawn =>
 				{
-					let direction = if piece.color == PieceColor::White
-					{
-						1
-					}
-					else
-					{
-						-1
-					};
+					let forward = piece.forward_vector();
 
 					let mut targets = Vec::from([
-						current_pos + Vec2i::new(0, direction),
-						current_pos + Vec2i::new(1, direction),
-						current_pos + Vec2i::new(-1, direction),
+						current_pos + forward,
+						current_pos + forward + Vec2i::RIGHT,
+						current_pos + forward + Vec2i::LEFT,
 					]);
 
 					if current_pos.rank() == 1 || current_pos.rank() == 6
 					{
-						targets.push(current_pos + Vec2i::new(0, 2 * direction));
+						targets.push(current_pos + (forward * 2));
 					}
 
 					targets
@@ -171,10 +164,10 @@ impl Board
 					current_pos + Vec2i::new(-1, -2),
 				]),
 				PieceType::King => Vec::from([
-					current_pos + Vec2i::new(1, 0),
-					current_pos + Vec2i::new(-1, 0),
-					current_pos + Vec2i::new(0, 1),
-					current_pos + Vec2i::new(0, -1),
+					current_pos + Vec2i::LEFT,
+					current_pos + Vec2i::UP,
+					current_pos + Vec2i::RIGHT,
+					current_pos + Vec2i::DOWN,
 					current_pos + Vec2i::new(1, 1),
 					current_pos + Vec2i::new(1, -1),
 					current_pos + Vec2i::new(-1, 1),
@@ -224,13 +217,7 @@ impl Board
 		if axis.orthogonal_allowed()
 		{
 			valid_offsets.append(
-				Vec::from([
-					Vec2i::new(1, 0),
-					Vec2i::new(-1, 0),
-					Vec2i::new(0, 1),
-					Vec2i::new(0, -1),
-				])
-				.borrow_mut(),
+				Vec::from([Vec2i::LEFT, Vec2i::UP, Vec2i::RIGHT, Vec2i::DOWN]).borrow_mut(),
 			);
 		}
 		if axis.diagonal_allowed()
@@ -283,7 +270,12 @@ pub struct Vec2i
 }
 impl Vec2i
 {
-	pub fn new(file: i32, rank: i32) -> Self
+	pub const LEFT: Self = Vec2i::new(-1, 0);
+	pub const UP: Self = Vec2i::new(0, 1);
+	pub const RIGHT: Self = Vec2i::new(1, 0);
+	pub const DOWN: Self = Vec2i::new(0, -1);
+
+	pub const fn new(file: i32, rank: i32) -> Self
 	{
 		Self { file, rank }
 	}
@@ -294,10 +286,16 @@ impl std::ops::Neg for Vec2i
 
 	fn neg(self) -> Self::Output
 	{
-		Self {
-			file: -self.file,
-			rank: -self.rank,
-		}
+		Self::new(-self.file, -self.rank)
+	}
+}
+impl std::ops::Mul<i32> for Vec2i
+{
+	type Output = Self;
+
+	fn mul(self, rhs: i32) -> Self::Output
+	{
+		Self::new(self.file * rhs, self.rank * rhs)
 	}
 }
 
@@ -428,6 +426,15 @@ impl std::ops::Add<Vec2i> for BoardPos
 		self.move_by(rhs)
 	}
 }
+impl std::ops::Add<Vec2i> for Option<BoardPos>
+{
+	type Output = Self;
+
+	fn add(self, rhs: Vec2i) -> Self::Output
+	{
+		self.and_then(|lhs| lhs + rhs)
+	}
+}
 impl std::ops::Sub<Vec2i> for BoardPos
 {
 	type Output = Option<Self>;
@@ -435,6 +442,15 @@ impl std::ops::Sub<Vec2i> for BoardPos
 	fn sub(self, rhs: Vec2i) -> Self::Output
 	{
 		self.move_by(-rhs)
+	}
+}
+impl std::ops::Sub<Vec2i> for Option<BoardPos>
+{
+	type Output = Self;
+
+	fn sub(self, rhs: Vec2i) -> Self::Output
+	{
+		self.and_then(|lhs| lhs - rhs)
 	}
 }
 
