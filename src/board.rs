@@ -1,6 +1,6 @@
 use std::{borrow::BorrowMut, fmt::Display};
 
-use eframe::egui::{os, Vec2};
+use eframe::egui::Vec2;
 use lazy_regex::Regex;
 
 #[derive(Debug)]
@@ -212,8 +212,6 @@ impl Board
 				mov.from.to_right_edge()
 			};
 
-			// log::info!("Move: {mov}; Direction: {direction}; Rook at: {rook_position}");
-
 			self[(mov.from + direction).unwrap()] = self[rook_position].take();
 		}
 
@@ -221,8 +219,6 @@ impl Board
 			.then(|| mov.to - piece.forward_vector())
 			.flatten();
 		self.to_move = !self.to_move;
-
-		log::info!("Move offset: {}", mov.offset());
 	}
 
 	fn sliding_piece_targets(&self, from: BoardPos, axis: SlidingAxis) -> Vec<Option<BoardPos>>
@@ -290,8 +286,6 @@ impl Board
 			{
 				mov.from.to_right_edge()
 			};
-
-			// log::info!("{mov}; relevant rook at: {}", rook_position);
 
 			if let Some(piece) = self[rook_position]
 				&& piece.piece_type == PieceType::Rook
