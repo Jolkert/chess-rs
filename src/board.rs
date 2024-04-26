@@ -139,19 +139,14 @@ impl Board
 				PieceType::Pawn =>
 				{
 					let forward = piece.forward_vector();
-
-					let mut targets = Vec::from([
+					Vec::from([
 						current_pos + forward,
 						current_pos + forward + Vec2i::RIGHT,
 						current_pos + forward + Vec2i::LEFT,
-					]);
-
-					if current_pos.rank() == 1 || current_pos.rank() == 6
-					{
-						targets.push(current_pos + (forward * 2));
-					}
-
-					targets
+						(current_pos.rank() == 1 || current_pos.rank() == 6)
+							.then(|| current_pos + (forward * 2))
+							.flatten(),
+					])
 				}
 				PieceType::Knight => Vec::from([
 					current_pos + Vec2i::new(2, 1),
