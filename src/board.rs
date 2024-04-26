@@ -252,8 +252,9 @@ impl Board
 		let target_piece = self[mov.to];
 
 		(can_move_to && target_piece.is_none())
-			|| (can_capture && (target_piece.is_some_and(|t| t.color != piece.color))
-				|| self.en_passant_target.is_some_and(|it| it == mov.to))
+			|| (can_capture
+				&& (target_piece.is_some_and(|t| t.color != piece.color)
+					|| self.en_passant_target.is_some_and(|it| it == mov.to)))
 	}
 }
 
