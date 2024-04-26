@@ -109,6 +109,16 @@ impl eframe::App for Application
 						ui.label(format!("En passant target square: {en_passant}"));
 					}
 
+					ui.label(format!("King movement: {:?}", self.board.has_king_moved));
+					ui.label(format!(
+						"A-Rook movement: {:?}",
+						self.board.has_a_rook_moved
+					));
+					ui.label(format!(
+						"H-Rook movement: {:?}",
+						self.board.has_h_rook_moved
+					));
+
 					ui.heading("Last interaction:");
 					if let Some(last_pos) = self.last_interacted_pos
 					{

@@ -6,13 +6,13 @@ use lazy_regex::Regex;
 #[derive(Debug)]
 pub struct Board
 {
-	// TODO:
-	// 1. castling options
-	// 2. en passant
-	// 3. legal move checking
+	// TODO: castling options
 	pieces: [Option<Piece>; 64],
 	to_move: PieceColor,
 	en_passant_target: Option<BoardPos>,
+	pub has_king_moved: WhiteBlackPair<bool>,
+	pub has_a_rook_moved: WhiteBlackPair<bool>,
+	pub has_h_rook_moved: WhiteBlackPair<bool>,
 }
 impl Default for Board
 {
@@ -22,6 +22,9 @@ impl Default for Board
 			pieces: [None; 64],
 			to_move: PieceColor::White,
 			en_passant_target: None,
+			has_king_moved: Default::default(),
+			has_a_rook_moved: Default::default(),
+			has_h_rook_moved: Default::default(),
 		}
 	}
 }
@@ -97,10 +100,35 @@ impl Board
 			_ => None,
 		}?;
 
+		let castle_options = captures[3].chars().collect::<Vec<_>>();
+		let white_kingside = castle_options.contains(&'K');
+		let white_queenside = castle_options.contains(&'Q');
+		let black_kingside = castle_options.contains(&'k');
+		let black_queenside = castle_options.contains(&'q');
+
+		let en_passant_str = &captures[4];
+		let en_passant_target = (en_passant_str != "-").then(|| {
+			let file = en_passant_str
+				.chars()
+				.nth(0)
+				.map(|it| (it as u8) - 97)
+				.unwrap();
+			let rank = en_passant_str.chars().nth(1).unwrap().to_digit(10).unwrap();
+
+			BoardPos::from_rank_file((8 - rank) as u8, file)
+		});
+
 		Some(Self {
 			pieces,
 			to_move,
-			en_passant_target: None,
+			has_king_moved: WhiteBlackPair::new(
+				!white_kingside && !white_queenside,
+				!black_kingside && !black_queenside,
+			),
+			has_a_rook_moved: WhiteBlackPair::new(!white_queenside, !black_queenside),
+			has_h_rook_moved: WhiteBlackPair::new(!white_kingside, !black_kingside),
+			en_passant_target,
+			..Default::default()
 		})
 	}
 
@@ -215,6 +243,23 @@ impl Board
 			self[(mov.from + direction).unwrap()] = self[rook_position].take();
 		}
 
+		if piece.piece_type == PieceType::King
+		{
+			self.has_king_moved[piece.color] = true;
+		}
+		if piece.piece_type == PieceType::Rook
+		{
+			if !self.has_a_rook_moved[piece.color] && mov.from.file() == 0
+			{
+				self.has_a_rook_moved[piece.color] = true;
+			}
+
+			if !self.has_h_rook_moved[piece.color] && mov.from.file() == 7
+			{
+				self.has_h_rook_moved[piece.color] = true;
+			}
+		}
+
 		self.en_passant_target = (piece.is_pawn() && mov.from.rank().abs_diff(mov.to.rank()) > 1)
 			.then(|| mov.to - piece.forward_vector())
 			.flatten();
@@ -267,15 +312,18 @@ impl Board
 	{
 		let can_move_to = !piece.is_pawn() || mov.from.file() == mov.to.file();
 		let can_capture = !piece.is_pawn() || mov.from.file() != mov.to.file();
+		let is_castle = piece.piece_type == PieceType::King && mov.offset().file.abs() > 1;
 		let target_piece = self[mov.to];
 
-		let move_allowed = can_move_to && target_piece.is_none();
+		let move_allowed = can_move_to && target_piece.is_none() && !is_castle;
 		let capture_allowed = can_capture
+			&& !is_castle
 			&& (target_piece.is_some_and(|p| p.color != piece.color)
 				|| self.en_passant_target.is_some_and(|sq| sq == mov.to));
 
 		// this castle detection is a nightmare -morgan 2024-04-26
 		let castle_allowed = if piece.piece_type == PieceType::King
+			&& !self.has_king_moved[piece.color]
 		{
 			let movement_direction = mov.offset().normalized();
 			let rook_position = if movement_direction == Vec2i::LEFT
@@ -287,13 +335,25 @@ impl Board
 				mov.from.to_right_edge()
 			};
 
-			if let Some(piece) = self[rook_position]
-				&& piece.piece_type == PieceType::Rook
+			// now i just dont really like this all that much
+			// TODO: clean this up -morgan 2024-04-26
+			let has_rook_moved = match rook_position.file()
 			{
-				self.can_piece_play(
-					piece,
-					Move::new(rook_position, (mov.from + movement_direction).unwrap()),
-				)
+				0 => self.has_a_rook_moved[piece.color],
+				7 => self.has_h_rook_moved[piece.color],
+				_ => true,
+			};
+
+			if let Some(rook) = self[rook_position]
+				&& rook.piece_type == PieceType::Rook
+				&& !has_rook_moved
+			{
+				let rook_ending_position = (mov.from + movement_direction).unwrap();
+				let valid_rook_targets =
+					self.sliding_piece_targets(rook_position, SlidingAxis::Orthogonal);
+
+				valid_rook_targets.contains(&Some(rook_ending_position))
+					&& self.can_piece_play(rook, Move::new(rook_position, rook_ending_position))
 			}
 			else
 			{
@@ -635,6 +695,44 @@ impl std::ops::Not for PieceColor
 		{
 			Self::White => Self::Black,
 			Self::Black => Self::White,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct WhiteBlackPair<T>
+{
+	white: T,
+	black: T,
+}
+impl<T> WhiteBlackPair<T>
+{
+	pub fn new(white: T, black: T) -> Self
+	{
+		Self { black, white }
+	}
+}
+impl<T> std::ops::Index<PieceColor> for WhiteBlackPair<T>
+{
+	type Output = T;
+
+	fn index(&self, index: PieceColor) -> &Self::Output
+	{
+		match index
+		{
+			PieceColor::White => &self.white,
+			PieceColor::Black => &self.black,
+		}
+	}
+}
+impl<T> std::ops::IndexMut<PieceColor> for WhiteBlackPair<T>
+{
+	fn index_mut(&mut self, index: PieceColor) -> &mut Self::Output
+	{
+		match index
+		{
+			PieceColor::White => &mut self.white,
+			PieceColor::Black => &mut self.black,
 		}
 	}
 }
