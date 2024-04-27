@@ -22,9 +22,9 @@ impl Default for Board
 			pieces: [None; 64],
 			to_move: PieceColor::White,
 			en_passant_target: None,
-			has_king_moved: Default::default(),
-			has_a_rook_moved: Default::default(),
-			has_h_rook_moved: Default::default(),
+			has_king_moved: WhiteBlackPair::default(),
+			has_a_rook_moved: WhiteBlackPair::default(),
+			has_h_rook_moved: WhiteBlackPair::default(),
 		}
 	}
 }
@@ -128,7 +128,6 @@ impl Board
 			has_a_rook_moved: WhiteBlackPair::new(!white_queenside, !black_queenside),
 			has_h_rook_moved: WhiteBlackPair::new(!white_kingside, !black_kingside),
 			en_passant_target,
-			..Default::default()
 		})
 	}
 
@@ -147,14 +146,7 @@ impl Board
 		// wow i really hate this - morgan 2024-04-23
 		let movable_pieces = self.pieces.iter().enumerate().filter_map(|it| {
 			it.1.map_or(None, |piece| {
-				if piece.color == self.to_move
-				{
-					Some((it.0, piece))
-				}
-				else
-				{
-					None
-				}
+				(piece.color == self.to_move).then_some((it.0, piece))
 			})
 		});
 
@@ -377,10 +369,10 @@ pub struct Vec2i
 }
 impl Vec2i
 {
-	pub const LEFT: Self = Vec2i::new(-1, 0);
-	pub const UP: Self = Vec2i::new(0, 1);
-	pub const RIGHT: Self = Vec2i::new(1, 0);
-	pub const DOWN: Self = Vec2i::new(0, -1);
+	pub const LEFT: Self = Self::new(-1, 0);
+	pub const UP: Self = Self::new(0, 1);
+	pub const RIGHT: Self = Self::new(1, 0);
+	pub const DOWN: Self = Self::new(0, -1);
 
 	pub const fn new(file: i32, rank: i32) -> Self
 	{
@@ -519,12 +511,12 @@ impl BoardPos
 
 	pub fn file_char(self) -> char
 	{
-		char::from_u32(self.file() as u32 + 97).expect("Invalid file character!")
+		char::from_u32(u32::from(self.file()) + 97).expect("Invalid file character!")
 	}
 
-	pub fn move_by(self, offset: Vec2i) -> Option<BoardPos>
+	pub fn move_by(self, offset: Vec2i) -> Option<Self>
 	{
-		let (signed_rank, signed_file) = (self.top_down_rank() as i32, self.file() as i32);
+		let (signed_rank, signed_file) = (i32::from(self.top_down_rank()), i32::from(self.file()));
 		let unclamped_pos = ((signed_rank - offset.rank), (signed_file + offset.file));
 		let new_pos = ((0..=7).contains(&unclamped_pos.0) && (0..=7).contains(&unclamped_pos.1))
 			.then(|| {
@@ -540,8 +532,8 @@ impl BoardPos
 	pub fn offset_from(self, other: Self) -> Vec2i
 	{
 		Vec2i::new(
-			self.file() as i32 - other.file() as i32,
-			self.rank() as i32 - other.rank() as i32,
+			i32::from(self.file()) - i32::from(other.file()),
+			i32::from(self.rank()) - i32::from(other.rank()),
 		)
 	}
 
@@ -608,7 +600,7 @@ impl Piece
 {
 	pub fn new(color: PieceColor, piece_type: PieceType) -> Self
 	{
-		Self { color, piece_type }
+		Self { piece_type, color }
 	}
 
 	pub fn from_char(fen_char: char) -> Option<Self>
@@ -709,7 +701,7 @@ impl<T> WhiteBlackPair<T>
 {
 	pub fn new(white: T, black: T) -> Self
 	{
-		Self { black, white }
+		Self { white, black }
 	}
 }
 impl<T> std::ops::Index<PieceColor> for WhiteBlackPair<T>

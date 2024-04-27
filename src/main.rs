@@ -1,4 +1,5 @@
 #![feature(unchecked_shifts, let_chains)]
+#![allow(clippy::cast_sign_loss)]
 
 pub mod board;
 pub mod icons;
@@ -64,7 +65,7 @@ impl Default for Application
 		Self {
 			dark_square_color: hsva_from_color32(color!(0xb58863)),
 			light_square_color: hsva_from_color32(color!(0xf0d9b5)),
-			board: Default::default(),
+			board: Board::default(),
 			dragging_index: None,
 			last_interacted_pos: None,
 			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1"),
@@ -163,8 +164,8 @@ impl eframe::App for Application
 					let tile_rect = Rect::from_min_size(
 						board_rect.left_top()
 							+ (Vec2::new(
-								board_pos.file() as f32,
-								board_pos.top_down_rank() as f32,
+								f32::from(board_pos.file()),
+								f32::from(board_pos.top_down_rank()),
 							) * tile_size),
 						Vec2::splat(tile_size),
 					);
@@ -305,7 +306,7 @@ impl eframe::App for Application
 						Image::new(piece.icon()).paint_at(
 							ui,
 							Rect::from_center_size(cursor_pos, Vec2::splat(tile_size)),
-						)
+						);
 					}
 				}
 
@@ -334,7 +335,7 @@ impl eframe::App for Application
 							if self.legal_moves.contains(&move_attempt)
 							{
 								self.board.make_move(move_attempt);
-								self.last_move = Some(move_attempt)
+								self.last_move = Some(move_attempt);
 							}
 							self.dragging_index = None;
 						}
