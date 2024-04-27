@@ -1,6 +1,6 @@
 use eframe::egui::{include_image, ImageSource};
 
-use crate::board::{Piece, PieceColor, PieceType};
+use crate::pieces::{Color, Piece, PieceType};
 
 pub const WHITE_BISHOP: ImageSource = include_image!("../textures/white_bishop.svg");
 pub const WHITE_KING: ImageSource = include_image!("../textures/white_king.svg");
@@ -22,19 +22,19 @@ impl Piece
 	{
 		match (self.color, self.piece_type)
 		{
-			(PieceColor::White, PieceType::Bishop) => WHITE_BISHOP,
-			(PieceColor::White, PieceType::King) => WHITE_KING,
-			(PieceColor::White, PieceType::Knight) => WHITE_KNIGHT,
-			(PieceColor::White, PieceType::Pawn) => WHITE_PAWN,
-			(PieceColor::White, PieceType::Queen) => WHITE_QUEEN,
-			(PieceColor::White, PieceType::Rook) => WHITE_ROOK,
+			(Color::White, PieceType::Bishop) => WHITE_BISHOP,
+			(Color::White, PieceType::King) => WHITE_KING,
+			(Color::White, PieceType::Knight) => WHITE_KNIGHT,
+			(Color::White, PieceType::Pawn) => WHITE_PAWN,
+			(Color::White, PieceType::Queen) => WHITE_QUEEN,
+			(Color::White, PieceType::Rook) => WHITE_ROOK,
 
-			(PieceColor::Black, PieceType::Bishop) => BLACK_BISHOP,
-			(PieceColor::Black, PieceType::King) => BLACK_KING,
-			(PieceColor::Black, PieceType::Knight) => BLACK_KNIGHT,
-			(PieceColor::Black, PieceType::Pawn) => BLACK_PAWN,
-			(PieceColor::Black, PieceType::Queen) => BLACK_QUEEN,
-			(PieceColor::Black, PieceType::Rook) => BLACK_ROOK,
+			(Color::Black, PieceType::Bishop) => BLACK_BISHOP,
+			(Color::Black, PieceType::King) => BLACK_KING,
+			(Color::Black, PieceType::Knight) => BLACK_KNIGHT,
+			(Color::Black, PieceType::Pawn) => BLACK_PAWN,
+			(Color::Black, PieceType::Queen) => BLACK_QUEEN,
+			(Color::Black, PieceType::Rook) => BLACK_ROOK,
 		}
 	}
 }

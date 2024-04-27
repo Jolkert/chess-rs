@@ -3,13 +3,15 @@ use std::{borrow::BorrowMut, fmt::Display};
 use eframe::egui::Vec2;
 use lazy_regex::Regex;
 
+use crate::pieces::{Color, Piece, PieceType, SlidingAxis, WhiteBlackPair};
+
 #[derive(Debug)]
 pub struct Board
 {
 	// TODO: castling options
 	pieces: [Option<Piece>; 64],
-	to_move: PieceColor,
-	en_passant_target: Option<BoardPos>,
+	to_move: Color,
+	en_passant_target: Option<Pos>,
 	pub has_king_moved: WhiteBlackPair<bool>,
 	pub has_a_rook_moved: WhiteBlackPair<bool>,
 	pub has_h_rook_moved: WhiteBlackPair<bool>,
@@ -20,7 +22,7 @@ impl Default for Board
 	{
 		Self {
 			pieces: [None; 64],
-			to_move: PieceColor::White,
+			to_move: Color::White,
 			en_passant_target: None,
 			has_king_moved: WhiteBlackPair::default(),
 			has_a_rook_moved: WhiteBlackPair::default(),
@@ -44,23 +46,22 @@ impl std::ops::IndexMut<usize> for Board
 		&mut self.pieces[index]
 	}
 }
-impl std::ops::Index<BoardPos> for Board
+impl std::ops::Index<Pos> for Board
 {
 	type Output = Option<Piece>;
 
-	fn index(&self, index: BoardPos) -> &Self::Output
+	fn index(&self, index: Pos) -> &Self::Output
 	{
 		&self.pieces[index.index()]
 	}
 }
-impl std::ops::IndexMut<BoardPos> for Board
+impl std::ops::IndexMut<Pos> for Board
 {
-	fn index_mut(&mut self, index: BoardPos) -> &mut Self::Output
+	fn index_mut(&mut self, index: Pos) -> &mut Self::Output
 	{
 		&mut self.pieces[index.index()]
 	}
 }
-
 impl Board
 {
 	fn fen_regex() -> &'static Regex
@@ -95,8 +96,8 @@ impl Board
 
 		let to_move = match captures[2].chars().nth(0)?
 		{
-			'w' => Some(PieceColor::White),
-			'b' => Some(PieceColor::Black),
+			'w' => Some(Color::White),
+			'b' => Some(Color::Black),
 			_ => None,
 		}?;
 
@@ -115,7 +116,7 @@ impl Board
 				.unwrap();
 			let rank = en_passant_str.chars().nth(1).unwrap().to_digit(10).unwrap();
 
-			BoardPos::from_rank_file((8 - rank) as u8, file)
+			Pos::from_rank_file((8 - rank) as u8, file)
 		});
 
 		Some(Self {
@@ -131,12 +132,12 @@ impl Board
 		})
 	}
 
-	pub fn to_move(&self) -> PieceColor
+	pub fn to_move(&self) -> Color
 	{
 		self.to_move
 	}
 
-	pub fn en_passant_target(&self) -> Option<BoardPos>
+	pub fn en_passant_target(&self) -> Option<Pos>
 	{
 		self.en_passant_target
 	}
@@ -153,7 +154,7 @@ impl Board
 		let mut legal_moves = Vec::new();
 		for (index, piece) in movable_pieces
 		{
-			let current_pos = BoardPos::from_index(index);
+			let current_pos = Pos::from_index(index);
 			let valid_targets = match piece.piece_type
 			{
 				PieceType::Pawn =>
@@ -258,7 +259,7 @@ impl Board
 		self.to_move = !self.to_move;
 	}
 
-	fn sliding_piece_targets(&self, from: BoardPos, axis: SlidingAxis) -> Vec<Option<BoardPos>>
+	fn sliding_piece_targets(&self, from: Pos, axis: SlidingAxis) -> Vec<Option<Pos>>
 	{
 		let mut targets = Vec::new();
 		let mut cursor = from;
@@ -362,85 +363,14 @@ impl Board
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Vec2i
-{
-	pub file: i32,
-	pub rank: i32,
-}
-impl Vec2i
-{
-	pub const LEFT: Self = Self::new(-1, 0);
-	pub const UP: Self = Self::new(0, 1);
-	pub const RIGHT: Self = Self::new(1, 0);
-	pub const DOWN: Self = Self::new(0, -1);
-
-	pub const fn new(file: i32, rank: i32) -> Self
-	{
-		Self { file, rank }
-	}
-
-	pub fn normalized(self) -> Self
-	{
-		Self::new(
-			self.file.checked_div(self.file.abs()).unwrap_or_default(),
-			self.rank.checked_div(self.rank.abs()).unwrap_or_default(),
-		)
-	}
-}
-impl std::ops::Neg for Vec2i
-{
-	type Output = Self;
-
-	fn neg(self) -> Self::Output
-	{
-		Self::new(-self.file, -self.rank)
-	}
-}
-impl std::ops::Mul<i32> for Vec2i
-{
-	type Output = Self;
-
-	fn mul(self, rhs: i32) -> Self::Output
-	{
-		Self::new(self.file * rhs, self.rank * rhs)
-	}
-}
-impl Display for Vec2i
-{
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-	{
-		write!(f, "({}, {})", self.file, self.rank)
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SlidingAxis
-{
-	Orthogonal,
-	Diagonal,
-	Both,
-}
-impl SlidingAxis
-{
-	pub fn orthogonal_allowed(self) -> bool
-	{
-		self == Self::Orthogonal || self == Self::Both
-	}
-	pub fn diagonal_allowed(self) -> bool
-	{
-		self == Self::Diagonal || self == Self::Both
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Move
 {
-	pub from: BoardPos,
-	pub to: BoardPos,
+	pub from: Pos,
+	pub to: Pos,
 }
 impl Move
 {
-	pub fn new(from: BoardPos, to: BoardPos) -> Self
+	pub fn new(from: Pos, to: Pos) -> Self
 	{
 		Self { from, to }
 	}
@@ -459,11 +389,11 @@ impl Display for Move
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BoardPos
+pub struct Pos
 {
 	tile_index: u8,
 }
-impl From<Vec2> for BoardPos
+impl From<Vec2> for Pos
 {
 	fn from(value: Vec2) -> Self
 	{
@@ -473,7 +403,7 @@ impl From<Vec2> for BoardPos
 		}
 	}
 }
-impl BoardPos
+impl Pos
 {
 	pub const fn from_index(tile_index: usize) -> Self
 	{
@@ -546,14 +476,14 @@ impl BoardPos
 		Self::from_rank_file(self.top_down_rank(), 7)
 	}
 }
-impl Display for BoardPos
+impl Display for Pos
 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
 	{
 		write!(f, "{}{}", self.file_char(), self.rank() + 1)
 	}
 }
-impl std::ops::Add<Vec2i> for BoardPos
+impl std::ops::Add<Vec2i> for Pos
 {
 	type Output = Option<Self>;
 
@@ -562,7 +492,7 @@ impl std::ops::Add<Vec2i> for BoardPos
 		self.move_by(rhs)
 	}
 }
-impl std::ops::Add<Vec2i> for Option<BoardPos>
+impl std::ops::Add<Vec2i> for Option<Pos>
 {
 	type Output = Self;
 
@@ -571,7 +501,7 @@ impl std::ops::Add<Vec2i> for Option<BoardPos>
 		self.and_then(|lhs| lhs + rhs)
 	}
 }
-impl std::ops::Sub<Vec2i> for BoardPos
+impl std::ops::Sub<Vec2i> for Pos
 {
 	type Output = Option<Self>;
 
@@ -580,7 +510,7 @@ impl std::ops::Sub<Vec2i> for BoardPos
 		self.move_by(-rhs)
 	}
 }
-impl std::ops::Sub<Vec2i> for Option<BoardPos>
+impl std::ops::Sub<Vec2i> for Option<Pos>
 {
 	type Output = Self;
 
@@ -591,140 +521,53 @@ impl std::ops::Sub<Vec2i> for Option<BoardPos>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Piece
+pub struct Vec2i
 {
-	pub piece_type: PieceType,
-	pub color: PieceColor,
+	pub file: i32,
+	pub rank: i32,
 }
-impl Piece
+impl Vec2i
 {
-	pub fn new(color: PieceColor, piece_type: PieceType) -> Self
+	pub const LEFT: Self = Self::new(-1, 0);
+	pub const UP: Self = Self::new(0, 1);
+	pub const RIGHT: Self = Self::new(1, 0);
+	pub const DOWN: Self = Self::new(0, -1);
+
+	pub const fn new(file: i32, rank: i32) -> Self
 	{
-		Self { piece_type, color }
+		Self { file, rank }
 	}
 
-	pub fn from_char(fen_char: char) -> Option<Self>
+	pub fn normalized(self) -> Self
 	{
-		let piece_type = match fen_char.to_ascii_lowercase()
-		{
-			'p' => PieceType::Pawn,
-			'n' => PieceType::Knight,
-			'b' => PieceType::Bishop,
-			'r' => PieceType::Rook,
-			'q' => PieceType::Queen,
-			'k' => PieceType::King,
-			_ => return None,
-		};
-		let color = if fen_char.is_ascii_uppercase()
-		{
-			PieceColor::White
-		}
-		else
-		{
-			PieceColor::Black
-		};
-
-		Some(Self::new(color, piece_type))
-	}
-
-	pub fn is_pawn(self) -> bool
-	{
-		self.piece_type == PieceType::Pawn
-	}
-
-	pub fn forward_vector(self) -> Vec2i
-	{
-		if self.color == PieceColor::White
-		{
-			Vec2i::new(0, 1)
-		}
-		else
-		{
-			Vec2i::new(0, -1)
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PieceType
-{
-	Pawn,
-	Bishop,
-	Rook,
-	Knight,
-	Queen,
-	King,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PieceColor
-{
-	White,
-	Black,
-}
-impl Display for PieceColor
-{
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-	{
-		write!(
-			f,
-			"{}",
-			match self
-			{
-				Self::White => "White",
-				Self::Black => "Black",
-			}
+		Self::new(
+			self.file.checked_div(self.file.abs()).unwrap_or_default(),
+			self.rank.checked_div(self.rank.abs()).unwrap_or_default(),
 		)
 	}
 }
-impl std::ops::Not for PieceColor
+impl std::ops::Neg for Vec2i
 {
 	type Output = Self;
 
-	fn not(self) -> Self::Output
+	fn neg(self) -> Self::Output
 	{
-		match self
-		{
-			Self::White => Self::Black,
-			Self::Black => Self::White,
-		}
+		Self::new(-self.file, -self.rank)
 	}
 }
+impl std::ops::Mul<i32> for Vec2i
+{
+	type Output = Self;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct WhiteBlackPair<T>
-{
-	white: T,
-	black: T,
-}
-impl<T> WhiteBlackPair<T>
-{
-	pub fn new(white: T, black: T) -> Self
+	fn mul(self, rhs: i32) -> Self::Output
 	{
-		Self { white, black }
+		Self::new(self.file * rhs, self.rank * rhs)
 	}
 }
-impl<T> std::ops::Index<PieceColor> for WhiteBlackPair<T>
+impl Display for Vec2i
 {
-	type Output = T;
-
-	fn index(&self, index: PieceColor) -> &Self::Output
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
 	{
-		match index
-		{
-			PieceColor::White => &self.white,
-			PieceColor::Black => &self.black,
-		}
-	}
-}
-impl<T> std::ops::IndexMut<PieceColor> for WhiteBlackPair<T>
-{
-	fn index_mut(&mut self, index: PieceColor) -> &mut Self::Output
-	{
-		match index
-		{
-			PieceColor::White => &mut self.white,
-			PieceColor::Black => &mut self.black,
-		}
+		write!(f, "({}, {})", self.file, self.rank)
 	}
 }

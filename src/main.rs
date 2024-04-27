@@ -3,6 +3,7 @@
 
 pub mod board;
 pub mod icons;
+pub mod pieces;
 
 macro_rules! color {
 	($rgb:expr) => {
@@ -14,7 +15,7 @@ macro_rules! color {
 	};
 }
 
-use board::{BoardPos, Move};
+use board::{Move, Pos};
 use eframe::{
 	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Vec2},
 	epaint::Hsva,
@@ -50,7 +51,7 @@ struct Application
 {
 	dark_square_color: Hsva,
 	light_square_color: Hsva,
-	last_interacted_pos: Option<BoardPos>,
+	last_interacted_pos: Option<Pos>,
 	board: Board,
 	dragging_index: Option<usize>,
 	fen_string: String,
@@ -159,7 +160,7 @@ impl eframe::App for Application
 				for i in 0..64
 				{
 					let is_held = self.dragging_index.is_some_and(|it| it == i);
-					let board_pos = BoardPos::from_index(i);
+					let board_pos = Pos::from_index(i);
 
 					let tile_rect = Rect::from_min_size(
 						board_rect.left_top()
@@ -314,15 +315,14 @@ impl eframe::App for Application
 				let response = ui.interact(board_rect, board_id, Sense::click_and_drag());
 				if let Some(pointer_pos) = response.interact_pointer_pos()
 				{
-					let board_pos =
-						BoardPos::from((pointer_pos - board_rect.left_top()) / tile_size);
+					let board_pos = Pos::from((pointer_pos - board_rect.left_top()) / tile_size);
 
 					if response.drag_started()
 						&& let Some(piece) = self.board[board_pos]
 						&& self.board.to_move() == piece.color
 					{
 						self.dragging_index = Some(board_pos.index());
-						self.last_interacted_pos = Some(BoardPos::from_index(board_pos.index()));
+						self.last_interacted_pos = Some(Pos::from_index(board_pos.index()));
 					}
 					if response.drag_stopped()
 					{
@@ -330,8 +330,7 @@ impl eframe::App for Application
 						{
 							self.last_interacted_pos = Some(board_pos);
 
-							let move_attempt =
-								Move::new(BoardPos::from_index(old_index), board_pos);
+							let move_attempt = Move::new(Pos::from_index(old_index), board_pos);
 							if self.legal_moves.contains(&move_attempt)
 							{
 								self.board.make_move(move_attempt);
