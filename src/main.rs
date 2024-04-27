@@ -47,6 +47,11 @@ fn main() -> Result<(), eframe::Error>
 	)
 }
 
+fn hsva_from_color32(color: Color32) -> Hsva
+{
+	Hsva::from_srgb([color.r(), color.g(), color.b()])
+}
+
 struct Application
 {
 	dark_square_color: Hsva,
@@ -58,7 +63,6 @@ struct Application
 	legal_moves: Vec<Move>,
 	last_move: Option<Move>,
 }
-
 impl Default for Application
 {
 	fn default() -> Self
@@ -75,12 +79,6 @@ impl Default for Application
 		}
 	}
 }
-
-fn hsva_from_color32(color: Color32) -> Hsva
-{
-	Hsva::from_srgb([color.r(), color.g(), color.b()])
-}
-
 impl eframe::App for Application
 {
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame)
