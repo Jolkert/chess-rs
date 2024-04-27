@@ -15,14 +15,12 @@ macro_rules! color {
 	};
 }
 
-use board::{Move, Pos};
 use eframe::{
 	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Vec2},
 	epaint::Hsva,
 };
-use log::info;
 
-use crate::board::Board;
+use crate::board::{Board, Move, Pos};
 
 fn main() -> Result<(), eframe::Error>
 {
@@ -36,7 +34,7 @@ fn main() -> Result<(), eframe::Error>
 		..Default::default()
 	};
 
-	info!("starting");
+	log::info!("starting");
 	eframe::run_native(
 		"Chess",
 		options,
