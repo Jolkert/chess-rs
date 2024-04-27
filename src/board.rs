@@ -5,10 +5,10 @@ use lazy_regex::Regex;
 
 use crate::pieces::{Color, Piece, PieceType, SlidingAxis, WhiteBlackPair};
 
+// TODO: check
 #[derive(Debug)]
 pub struct Board
 {
-	// TODO: castling options
 	pieces: [Option<Piece>; 64],
 	to_move: Color,
 	en_passant_target: Option<Pos>,
