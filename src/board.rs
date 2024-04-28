@@ -158,7 +158,21 @@ impl Board
 		let pseudo_legal_moves = self.pseudo_legal_moves_for_color(self.to_move);
 		pseudo_legal_moves
 			.into_iter()
-			.filter(|it| !self.move_endangers_king(*it))
+			.filter(|mov| {
+				let check_blocks_move = self.move_endangers_king(*mov);
+				let piece = self[mov.from].unwrap();
+				let check_blocks_castle = if piece.piece_type == PieceType::King
+					&& mov.offset().file.abs() > 1
+				{
+					self.check_blocks_castle(mov.from, piece.color, mov.offset().normalized())
+				}
+				else
+				{
+					false
+				};
+
+				!check_blocks_move && !check_blocks_castle
+			})
 			.collect()
 	}
 
@@ -454,7 +468,21 @@ impl Board
 		result
 	}
 
-	fn is_king_in_check(&mut self, color: Color) -> bool
+	fn check_blocks_castle(&self, start_pos: Pos, color: Color, direction: Vec2i) -> bool
+	{
+		let mut castle_passing_squares = [start_pos + direction, start_pos + (direction * 2)]
+			.into_iter()
+			.flatten();
+
+		self.is_king_in_check(color)
+			|| castle_passing_squares.any(|passing_square| {
+				self.pseudo_legal_moves_for_color(!color)
+					.iter()
+					.any(|mov| mov.to == passing_square)
+			})
+	}
+
+	fn is_king_in_check(&self, color: Color) -> bool
 	{
 		self.pseudo_legal_moves_for_color(!color)
 			.iter()
