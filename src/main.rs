@@ -339,11 +339,15 @@ impl eframe::App for Application
 				// interaction
 				if self.board.to_move() == Color::Black
 				{
-					let bot_move_attempt = self.engine.generate_move(&mut self.board);
-					let bot_move = self.board.make_move(bot_move_attempt);
-					self.side_in_check = (bot_move.check_state() != CheckState::None)
-						.then(|| !bot_move.piece().color);
-					self.played_moves.push_front(bot_move);
+					let bot_move = self.engine.generate_move(&mut self.board);
+					if self.legal_moves.contains(&bot_move)
+					{
+						self.play_move(bot_move);
+					}
+					else
+					{
+						log::warn!("Bot attempted to play illegal move: {}", bot_move);
+					}
 				}
 
 				let response = ui.interact(board_rect, board_id, Sense::click_and_drag());
@@ -368,12 +372,7 @@ impl eframe::App for Application
 							let move_attempt = Move::new(Pos::from_index(old_index), board_pos);
 							if self.legal_moves.contains(&move_attempt)
 							{
-								let played_move = self.board.make_move(move_attempt);
-
-								self.side_in_check = (played_move.check_state()
-									!= CheckState::None)
-									.then(|| !played_move.piece().color);
-								self.played_moves.push_front(played_move);
+								self.play_move(move_attempt);
 							}
 							self.dragging_index = None;
 						}
@@ -388,5 +387,14 @@ impl Application
 	fn last_move(&self) -> Option<&PlayedMove>
 	{
 		self.played_moves.front()
+	}
+
+	fn play_move(&mut self, mov: Move)
+	{
+		let played_move = self.board.make_move(mov);
+		log::info!("{} plays {}", played_move.piece().color, played_move);
+		self.side_in_check =
+			(played_move.check_state() != CheckState::None).then(|| !played_move.piece().color);
+		self.played_moves.push_front(played_move);
 	}
 }
