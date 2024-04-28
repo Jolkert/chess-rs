@@ -24,7 +24,7 @@ use eframe::{
 	epaint::Hsva,
 };
 use engine::Engine;
-use pieces::{Color, PieceType};
+use pieces::Color;
 
 use crate::board::{Board, Move, Pos};
 
@@ -64,7 +64,6 @@ struct Application
 	board: Board,
 	dragging_index: Option<usize>,
 	fen_string: String,
-	legal_moves: Vec<Move>,
 	played_moves: VecDeque<PlayedMove>,
 	side_in_check: Option<Color>,
 	engine: Engine,
@@ -80,7 +79,7 @@ impl Default for Application
 			dragging_index: None,
 			last_interacted_pos: None,
 			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1"),
-			legal_moves: Vec::new(),
+
 			played_moves: VecDeque::new(),
 			side_in_check: None,
 			engine: Engine,
@@ -126,14 +125,9 @@ impl eframe::App for Application
 						ui.label(format!("En passant target square: {en_passant}"));
 					}
 
-					// ui.label(format!("King movement: {:?}", self.board.has_king_moved()));
 					// ui.label(format!(
-					// 	"A-Rook movement: {:?}",
-					// 	self.board.has_a_rook_moved()
-					// ));
-					// ui.label(format!(
-					// 	"H-Rook movement: {:?}",
-					// 	self.board.has_h_rook_moved()
+					// 	"Castle information:\n {:#?}",
+					// 	self.board.castle_legality()
 					// ));
 
 					ui.heading("Last interaction:");
@@ -171,7 +165,6 @@ impl eframe::App for Application
 				// draw board
 				let painter = ui.painter();
 				let tile_size = board_rect.height() / 8.0;
-				self.legal_moves = self.board.legal_moves();
 				for i in 0..64
 				{
 					let is_held = self.dragging_index.is_some_and(|it| it == i);
@@ -287,7 +280,7 @@ impl eframe::App for Application
 					// draw static pieces
 					if let Some(piece) = self.board[i]
 					{
-						if piece.piece_type == PieceType::King
+						if piece.is_king()
 							&& self.side_in_check.is_some_and(|color| color == piece.color)
 						{
 							painter.rect_filled(
@@ -310,7 +303,7 @@ impl eframe::App for Application
 					}
 
 					// draw legal move target circles
-					if self.legal_moves.iter().any(|mv| {
+					if self.board.legal_moves.iter().any(|mv| {
 						self.dragging_index
 							.is_some_and(|drag_idx| drag_idx == mv.from.index())
 							&& mv.to == board_pos
@@ -340,7 +333,7 @@ impl eframe::App for Application
 				if self.board.to_move() == Color::Black
 				{
 					let bot_move = self.engine.generate_move(&mut self.board);
-					if self.legal_moves.contains(&bot_move)
+					if self.board.legal_moves.contains(&bot_move)
 					{
 						self.play_move(bot_move);
 					}
@@ -370,7 +363,7 @@ impl eframe::App for Application
 							self.last_interacted_pos = Some(board_pos);
 
 							let move_attempt = Move::new(Pos::from_index(old_index), board_pos);
-							if self.legal_moves.contains(&move_attempt)
+							if self.board.legal_moves.contains(&move_attempt)
 							{
 								self.play_move(move_attempt);
 							}

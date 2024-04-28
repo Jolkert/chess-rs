@@ -43,6 +43,10 @@ impl Piece
 	{
 		self.piece_type == PieceType::Pawn
 	}
+	pub fn is_king(self) -> bool
+	{
+		self.piece_type == PieceType::King
+	}
 
 	pub fn forward_vector(self) -> Vec2i
 	{
@@ -118,44 +122,6 @@ impl std::ops::Not for Color
 		{
 			Self::White => Self::Black,
 			Self::Black => Self::White,
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct WhiteBlackPair<T>
-{
-	white: T,
-	black: T,
-}
-impl<T> WhiteBlackPair<T>
-{
-	pub fn new(white: T, black: T) -> Self
-	{
-		Self { white, black }
-	}
-}
-impl<T> std::ops::Index<Color> for WhiteBlackPair<T>
-{
-	type Output = T;
-
-	fn index(&self, index: Color) -> &Self::Output
-	{
-		match index
-		{
-			Color::White => &self.white,
-			Color::Black => &self.black,
-		}
-	}
-}
-impl<T> std::ops::IndexMut<Color> for WhiteBlackPair<T>
-{
-	fn index_mut(&mut self, index: Color) -> &mut Self::Output
-	{
-		match index
-		{
-			Color::White => &mut self.white,
-			Color::Black => &mut self.black,
 		}
 	}
 }
