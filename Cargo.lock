@@ -705,6 +705,7 @@ dependencies = [
  "env_logger",
  "lazy-regex",
  "log",
+ "rand",
 ]
 
 [[package]]

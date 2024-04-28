@@ -2,6 +2,7 @@
 #![allow(clippy::cast_sign_loss)]
 
 pub mod board;
+mod engine;
 pub mod icons;
 pub mod pieces;
 
@@ -22,6 +23,7 @@ use eframe::{
 	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Vec2},
 	epaint::Hsva,
 };
+use engine::Engine;
 use pieces::{Color, PieceType};
 
 use crate::board::{Board, Move, Pos};
@@ -65,6 +67,7 @@ struct Application
 	legal_moves: Vec<Move>,
 	played_moves: VecDeque<PlayedMove>,
 	side_in_check: Option<Color>,
+	engine: Engine,
 }
 impl Default for Application
 {
@@ -80,6 +83,7 @@ impl Default for Application
 			legal_moves: Vec::new(),
 			played_moves: VecDeque::new(),
 			side_in_check: None,
+			engine: Engine,
 		}
 	}
 }
@@ -333,6 +337,15 @@ impl eframe::App for Application
 				}
 
 				// interaction
+				if self.board.to_move() == Color::Black
+				{
+					let bot_move_attempt = self.engine.generate_move(&mut self.board);
+					let bot_move = self.board.make_move(bot_move_attempt);
+					self.side_in_check = (bot_move.check_state() != CheckState::None)
+						.then(|| !bot_move.piece().color);
+					self.played_moves.push_front(bot_move);
+				}
+
 				let response = ui.interact(board_rect, board_id, Sense::click_and_drag());
 				if let Some(pointer_pos) = response.interact_pointer_pos()
 				{
@@ -341,7 +354,7 @@ impl eframe::App for Application
 					if response.drag_started()
 						&& let Some(piece) = self.board[board_pos]
 						&& self.board.to_move() == piece.color
-					// && self.board.to_move() == Color::White
+						&& self.board.to_move() == Color::White
 					{
 						self.dragging_index = Some(board_pos.index());
 						self.last_interacted_pos = Some(Pos::from_index(board_pos.index()));
