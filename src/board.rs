@@ -201,9 +201,10 @@ impl Board
 					position + forward,
 					position + forward + Vec2i::RIGHT,
 					position + forward + Vec2i::LEFT,
-					(position.rank() == 1 || position.rank() == 6)
-						.then(|| position + (forward * 2))
-						.flatten(),
+					((position.rank() == 1 || position.rank() == 6)
+						&& (position + forward).is_some_and(|sq| self[sq].is_none()))
+					.then(|| position + (forward * 2))
+					.flatten(),
 				])
 			}
 			PieceType::Knight => Vec::from([
