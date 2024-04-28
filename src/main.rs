@@ -15,10 +15,14 @@ macro_rules! color {
 	};
 }
 
+use std::collections::VecDeque;
+
+use board::{CheckState, PlayedMove};
 use eframe::{
 	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Vec2},
 	epaint::Hsva,
 };
+use pieces::{Color, PieceType};
 
 use crate::board::{Board, Move, Pos};
 
@@ -59,7 +63,8 @@ struct Application
 	dragging_index: Option<usize>,
 	fen_string: String,
 	legal_moves: Vec<Move>,
-	last_move: Option<Move>,
+	played_moves: VecDeque<PlayedMove>,
+	side_in_check: Option<Color>,
 }
 impl Default for Application
 {
@@ -73,7 +78,8 @@ impl Default for Application
 			last_interacted_pos: None,
 			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1"),
 			legal_moves: Vec::new(),
-			last_move: None,
+			played_moves: VecDeque::new(),
+			side_in_check: None,
 		}
 	}
 }
@@ -89,8 +95,8 @@ impl eframe::App for Application
 					ui.text_edit_singleline(&mut self.fen_string)
 						.labelled_by(label.id);
 
-					let button = ui.button("Load FEN");
-					if button.clicked()
+					let load_fen_button = ui.button("Load FEN");
+					if load_fen_button.clicked()
 					{
 						self.board =
 							Board::from_fen_string(&self.fen_string).expect("Invalid FEN string!");
@@ -98,24 +104,33 @@ impl eframe::App for Application
 
 					ui.heading("Game information:");
 					ui.label(format!("{} to move", self.board.to_move()));
-					if let Some(last_move) = self.last_move
+					if let Some(last_move) = self.last_move()
 					{
 						ui.label(format!("Last move: {last_move}"));
+						let undo_button = ui.button("Undo");
+						if undo_button.clicked()
+						{
+							if let Some(last_move) = &self.played_moves.pop_front()
+							{
+								self.board.unmake_move(last_move);
+							}
+						}
 					}
+
 					if let Some(en_passant) = self.board.en_passant_target()
 					{
 						ui.label(format!("En passant target square: {en_passant}"));
 					}
 
-					ui.label(format!("King movement: {:?}", self.board.has_king_moved));
-					ui.label(format!(
-						"A-Rook movement: {:?}",
-						self.board.has_a_rook_moved
-					));
-					ui.label(format!(
-						"H-Rook movement: {:?}",
-						self.board.has_h_rook_moved
-					));
+					// ui.label(format!("King movement: {:?}", self.board.has_king_moved()));
+					// ui.label(format!(
+					// 	"A-Rook movement: {:?}",
+					// 	self.board.has_a_rook_moved()
+					// ));
+					// ui.label(format!(
+					// 	"H-Rook movement: {:?}",
+					// 	self.board.has_h_rook_moved()
+					// ));
 
 					ui.heading("Last interaction:");
 					if let Some(last_pos) = self.last_interacted_pos
@@ -183,7 +198,7 @@ impl eframe::App for Application
 
 					// green highlight for currently moving piece shadow and last move source square
 					if (is_held && self.board[i].is_some())
-						|| self.last_move.is_some_and(|mv| mv.from.index() == i)
+						|| self.last_move().is_some_and(|mv| mv.from().index() == i)
 					{
 						painter.rect_filled(
 							tile_rect,
@@ -193,7 +208,7 @@ impl eframe::App for Application
 					}
 
 					// darker green highlight for last move destination square
-					if self.last_move.is_some_and(|mv| mv.to.index() == i)
+					if self.last_move().is_some_and(|mv| mv.to().index() == i)
 					{
 						painter.rect_filled(
 							tile_rect,
@@ -268,6 +283,16 @@ impl eframe::App for Application
 					// draw static pieces
 					if let Some(piece) = self.board[i]
 					{
+						if piece.piece_type == PieceType::King
+							&& self.side_in_check.is_some_and(|color| color == piece.color)
+						{
+							painter.rect_filled(
+								tile_rect,
+								Rounding::ZERO,
+								Color32::from_rgba_premultiplied(100, 15, 15, 255 / 2),
+							);
+						}
+
 						if is_held
 						{
 							Image::new(piece.icon())
@@ -316,6 +341,7 @@ impl eframe::App for Application
 					if response.drag_started()
 						&& let Some(piece) = self.board[board_pos]
 						&& self.board.to_move() == piece.color
+					// && self.board.to_move() == Color::White
 					{
 						self.dragging_index = Some(board_pos.index());
 						self.last_interacted_pos = Some(Pos::from_index(board_pos.index()));
@@ -329,8 +355,12 @@ impl eframe::App for Application
 							let move_attempt = Move::new(Pos::from_index(old_index), board_pos);
 							if self.legal_moves.contains(&move_attempt)
 							{
-								self.board.make_move(move_attempt);
-								self.last_move = Some(move_attempt);
+								let played_move = self.board.make_move(move_attempt);
+
+								self.side_in_check = (played_move.check_state()
+									!= CheckState::None)
+									.then(|| !played_move.piece().color);
+								self.played_moves.push_front(played_move);
 							}
 							self.dragging_index = None;
 						}
@@ -338,5 +368,12 @@ impl eframe::App for Application
 				}
 			});
 		});
+	}
+}
+impl Application
+{
+	fn last_move(&self) -> Option<&PlayedMove>
+	{
+		self.played_moves.front()
 	}
 }

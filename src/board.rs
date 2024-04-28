@@ -12,9 +12,7 @@ pub struct Board
 	pieces: [Option<Piece>; 64],
 	to_move: Color,
 	en_passant_target: Option<Pos>,
-	pub has_king_moved: WhiteBlackPair<bool>,
-	pub has_a_rook_moved: WhiteBlackPair<bool>,
-	pub has_h_rook_moved: WhiteBlackPair<bool>,
+	castle_legality: CastleLegality,
 }
 impl Default for Board
 {
@@ -24,9 +22,7 @@ impl Default for Board
 			pieces: [None; 64],
 			to_move: Color::White,
 			en_passant_target: None,
-			has_king_moved: WhiteBlackPair::default(),
-			has_a_rook_moved: WhiteBlackPair::default(),
-			has_h_rook_moved: WhiteBlackPair::default(),
+			castle_legality: CastleLegality::default(),
 		}
 	}
 }
@@ -64,6 +60,19 @@ impl std::ops::IndexMut<Pos> for Board
 }
 impl Board
 {
+	pub fn has_king_moved(&self) -> WhiteBlackPair<bool>
+	{
+		self.castle_legality.has_king_moved
+	}
+	pub fn has_a_rook_moved(&self) -> WhiteBlackPair<bool>
+	{
+		self.castle_legality.has_a_rook_moved
+	}
+	pub fn has_h_rook_moved(&self) -> WhiteBlackPair<bool>
+	{
+		self.castle_legality.has_h_rook_moved
+	}
+
 	fn fen_regex() -> &'static Regex
 	{
 		lazy_regex::regex!(
@@ -122,12 +131,14 @@ impl Board
 		Some(Self {
 			pieces,
 			to_move,
-			has_king_moved: WhiteBlackPair::new(
-				!white_kingside && !white_queenside,
-				!black_kingside && !black_queenside,
-			),
-			has_a_rook_moved: WhiteBlackPair::new(!white_queenside, !black_queenside),
-			has_h_rook_moved: WhiteBlackPair::new(!white_kingside, !black_kingside),
+			castle_legality: CastleLegality {
+				has_king_moved: WhiteBlackPair::new(
+					!white_kingside && !white_queenside,
+					!black_kingside && !black_queenside,
+				),
+				has_a_rook_moved: WhiteBlackPair::new(!white_queenside, !black_queenside),
+				has_h_rook_moved: WhiteBlackPair::new(!white_kingside, !black_kingside),
+			},
 			en_passant_target,
 		})
 	}
@@ -142,78 +153,97 @@ impl Board
 		self.en_passant_target
 	}
 
-	pub fn legal_moves(&self) -> Vec<Move>
+	pub fn legal_moves(&mut self) -> Vec<Move>
 	{
-		// wow i really hate this - morgan 2024-04-23
-		let movable_pieces = self.pieces.iter().enumerate().filter_map(|it| {
-			it.1.map_or(None, |piece| {
-				(piece.color == self.to_move).then_some((it.0, piece))
-			})
-		});
-
-		let mut legal_moves = Vec::new();
-		for (index, piece) in movable_pieces
-		{
-			let current_pos = Pos::from_index(index);
-			let valid_targets = match piece.piece_type
-			{
-				PieceType::Pawn =>
-				{
-					let forward = piece.forward_vector();
-					Vec::from([
-						current_pos + forward,
-						current_pos + forward + Vec2i::RIGHT,
-						current_pos + forward + Vec2i::LEFT,
-						(current_pos.rank() == 1 || current_pos.rank() == 6)
-							.then(|| current_pos + (forward * 2))
-							.flatten(),
-					])
-				}
-				PieceType::Knight => Vec::from([
-					current_pos + Vec2i::new(2, 1),
-					current_pos + Vec2i::new(2, -1),
-					current_pos + Vec2i::new(-2, 1),
-					current_pos + Vec2i::new(-2, -1),
-					current_pos + Vec2i::new(1, 2),
-					current_pos + Vec2i::new(1, -2),
-					current_pos + Vec2i::new(-1, 2),
-					current_pos + Vec2i::new(-1, -2),
-				]),
-				PieceType::King => Vec::from([
-					current_pos + Vec2i::LEFT,
-					current_pos + Vec2i::UP,
-					current_pos + Vec2i::RIGHT,
-					current_pos + Vec2i::DOWN,
-					current_pos + Vec2i::new(1, 1),
-					current_pos + Vec2i::new(1, -1),
-					current_pos + Vec2i::new(-1, 1),
-					current_pos + Vec2i::new(-1, -1),
-					current_pos + Vec2i::new(2, 0),
-					current_pos + Vec2i::new(-2, 0),
-				]),
-				PieceType::Queen => self.sliding_piece_targets(current_pos, SlidingAxis::Both),
-				PieceType::Bishop => self.sliding_piece_targets(current_pos, SlidingAxis::Diagonal),
-				PieceType::Rook => self.sliding_piece_targets(current_pos, SlidingAxis::Orthogonal),
-			};
-
-			for target_pos in valid_targets.into_iter().flatten()
-			{
-				if self.can_piece_play(piece, Move::new(current_pos, target_pos))
-				{
-					legal_moves.push(Move::new(current_pos, target_pos));
-				}
-			}
-		}
-
-		legal_moves
+		let pseudo_legal_moves = self.pseudo_legal_moves_for_color(self.to_move);
+		pseudo_legal_moves
+			.into_iter()
+			.filter(|it| !self.move_endangers_king(*it))
+			.collect()
 	}
 
-	pub fn make_move(&mut self, mov: Move)
+	pub fn pseudo_legal_moves_for_color(&self, color: Color) -> Vec<Move>
+	{
+		// do i hate this? -morgan 2024-04-27
+		self.pieces
+			.iter()
+			.enumerate()
+			.filter_map(|(i, square)| {
+				square
+					.and_then(|piece| (piece.color == color).then_some((Pos::from_index(i), piece)))
+			})
+			.flat_map(|(pos, piece)| self.pseudo_legal_moves_for_piece(pos, piece))
+			.collect::<Vec<_>>()
+	}
+
+	pub fn pseudo_legal_moves_for_piece(&self, position: Pos, piece: Piece) -> Vec<Move>
+	{
+		match piece.piece_type
+		{
+			PieceType::Pawn =>
+			{
+				let forward = piece.forward_vector();
+				Vec::from([
+					position + forward,
+					position + forward + Vec2i::RIGHT,
+					position + forward + Vec2i::LEFT,
+					(position.rank() == 1 || position.rank() == 6)
+						.then(|| position + (forward * 2))
+						.flatten(),
+				])
+			}
+			PieceType::Knight => Vec::from([
+				position + Vec2i::new(2, 1),
+				position + Vec2i::new(2, -1),
+				position + Vec2i::new(-2, 1),
+				position + Vec2i::new(-2, -1),
+				position + Vec2i::new(1, 2),
+				position + Vec2i::new(1, -2),
+				position + Vec2i::new(-1, 2),
+				position + Vec2i::new(-1, -2),
+			]),
+			PieceType::King => Vec::from([
+				position + Vec2i::LEFT,
+				position + Vec2i::UP,
+				position + Vec2i::RIGHT,
+				position + Vec2i::DOWN,
+				position + Vec2i::new(1, 1),
+				position + Vec2i::new(1, -1),
+				position + Vec2i::new(-1, 1),
+				position + Vec2i::new(-1, -1),
+				position + Vec2i::new(2, 0),
+				position + Vec2i::new(-2, 0),
+			]),
+			PieceType::Queen => self.sliding_piece_targets(position, SlidingAxis::Both),
+			PieceType::Bishop => self.sliding_piece_targets(position, SlidingAxis::Diagonal),
+			PieceType::Rook => self.sliding_piece_targets(position, SlidingAxis::Orthogonal),
+		}
+		// is this a good idea? -morgan 2024-04-27
+		.into_iter()
+		.flatten()
+		.map(|target_pos| Move::new(position, target_pos))
+		.filter(|mov| self.can_piece_play(piece, *mov))
+		.collect()
+	}
+
+	pub fn make_move(&mut self, mov: Move) -> PlayedMove
 	{
 		let piece = self[mov.from].expect("Tried to make a move from an empty square!");
+		let previous_castle_legality = self.castle_legality;
+		let previous_en_passant = self.en_passant_target;
+
 		let is_en_passant =
 			piece.is_pawn() && self[mov.to].is_none() && mov.from.file() != mov.to.file();
 		let is_castle = piece.piece_type == PieceType::King && mov.offset().file.abs() > 1;
+
+		let capture_square = is_en_passant
+			.then(|| (mov.to - piece.forward_vector()).expect("En passant broke"))
+			.unwrap_or(mov.to);
+
+		let capture_data = self[capture_square].map(|piece| Capture {
+			pos: capture_square,
+			piece,
+		});
 
 		self[mov.to] = self[mov.from].take();
 		if is_en_passant
@@ -221,35 +251,36 @@ impl Board
 			self[(mov.to - piece.forward_vector()).expect("En passant broke")] = None;
 		}
 
-		if is_castle
-		{
+		let castle_state = is_castle.then(|| {
 			let direction = mov.offset().normalized();
-			let rook_position = if direction == Vec2i::LEFT
+			let (rook_position, state) = if direction == Vec2i::LEFT
 			{
-				mov.from.to_left_edge()
+				(mov.from.to_left_edge(), CastleState::Queenside)
 			}
 			else
 			{
-				mov.from.to_right_edge()
+				(mov.from.to_right_edge(), CastleState::Kingside)
 			};
 
 			self[(mov.from + direction).unwrap()] = self[rook_position].take();
-		}
+
+			state
+		});
 
 		if piece.piece_type == PieceType::King
 		{
-			self.has_king_moved[piece.color] = true;
+			self.castle_legality.has_king_moved[piece.color] = true;
 		}
 		if piece.piece_type == PieceType::Rook
 		{
-			if !self.has_a_rook_moved[piece.color] && mov.from.file() == 0
+			if !self.castle_legality.has_a_rook_moved[piece.color] && mov.from.file() == 0
 			{
-				self.has_a_rook_moved[piece.color] = true;
+				self.castle_legality.has_a_rook_moved[piece.color] = true;
 			}
 
-			if !self.has_h_rook_moved[piece.color] && mov.from.file() == 7
+			if !self.castle_legality.has_h_rook_moved[piece.color] && mov.from.file() == 7
 			{
-				self.has_h_rook_moved[piece.color] = true;
+				self.castle_legality.has_h_rook_moved[piece.color] = true;
 			}
 		}
 
@@ -257,6 +288,60 @@ impl Board
 			.then(|| mov.to - piece.forward_vector())
 			.flatten();
 		self.to_move = !self.to_move;
+
+		let check_state = if self.is_king_in_check(!piece.color)
+		{
+			if self.pseudo_legal_moves_for_color(Color::White).is_empty()
+			{
+				CheckState::Checkmate
+			}
+			else
+			{
+				CheckState::Check
+			}
+		}
+		else
+		{
+			CheckState::None
+		};
+
+		PlayedMove {
+			mov,
+			piece,
+			capture: capture_data,
+			castle_state,
+			check_state,
+			previous_castle_legality,
+			previous_en_passant,
+		}
+	}
+
+	pub fn unmake_move(&mut self, mov: &PlayedMove)
+	{
+		let _ = self[mov.from()].insert(mov.piece);
+		self[mov.to()] = None;
+		if let Some(capture) = mov.capture
+		{
+			let _ = self[capture.pos].insert(capture.piece);
+		}
+
+		if let Some(castle_state) = mov.castle_state
+		{
+			let rook_start_pos = match castle_state
+			{
+				CastleState::Kingside => mov.to().to_right_edge(),
+				CastleState::Queenside => mov.to().to_left_edge(),
+			};
+
+			let _ = self[rook_start_pos].insert(Piece::new(mov.piece.color, PieceType::Rook));
+			let rook_pos_after_castle = (mov.from() + castle_state.direction())
+				.expect("Attempted to undo invalid castle move!");
+			self[rook_pos_after_castle] = None;
+		}
+
+		self.to_move = mov.piece.color;
+		self.castle_legality = mov.previous_castle_legality;
+		self.en_passant_target = mov.previous_en_passant;
 	}
 
 	fn sliding_piece_targets(&self, from: Pos, axis: SlidingAxis) -> Vec<Option<Pos>>
@@ -316,7 +401,7 @@ impl Board
 
 		// this castle detection is a nightmare -morgan 2024-04-26
 		let castle_allowed = if piece.piece_type == PieceType::King
-			&& !self.has_king_moved[piece.color]
+			&& !self.castle_legality.has_king_moved[piece.color]
 		{
 			let movement_direction = mov.offset().normalized();
 			let rook_position = if movement_direction == Vec2i::LEFT
@@ -332,8 +417,8 @@ impl Board
 			// TODO: clean this up -morgan 2024-04-26
 			let has_rook_moved = match rook_position.file()
 			{
-				0 => self.has_a_rook_moved[piece.color],
-				7 => self.has_h_rook_moved[piece.color],
+				0 => self.castle_legality.has_a_rook_moved[piece.color],
+				7 => self.castle_legality.has_h_rook_moved[piece.color],
 				_ => true,
 			};
 
@@ -359,6 +444,37 @@ impl Board
 		};
 
 		move_allowed || capture_allowed || castle_allowed
+	}
+
+	fn move_endangers_king(&mut self, mov: Move) -> bool
+	{
+		let played_move = self.make_move(mov);
+		let result = self.is_king_in_check(!self.to_move);
+		self.unmake_move(&played_move);
+		result
+	}
+
+	fn is_king_in_check(&mut self, color: Color) -> bool
+	{
+		self.pseudo_legal_moves_for_color(!color)
+			.iter()
+			.any(|mov| mov.to == self.king_postion(color))
+	}
+
+	fn king_postion(&self, color: Color) -> Pos
+	{
+		Pos::from_index(
+			self.pieces
+				.iter()
+				.enumerate()
+				.find(|(_, square)| {
+					square.is_some_and(|piece| {
+						piece.color == color && piece.piece_type == PieceType::King
+					})
+				})
+				.unwrap_or_else(|| panic!("{color} king not found!"))
+				.0,
+		)
 	}
 }
 
@@ -386,6 +502,113 @@ impl Display for Move
 	{
 		write!(f, "{} --> {}", self.from, self.to)
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayedMove
+{
+	mov: Move,
+	piece: Piece,
+	capture: Option<Capture>,
+	castle_state: Option<CastleState>,
+	check_state: CheckState,
+	previous_castle_legality: CastleLegality,
+	previous_en_passant: Option<Pos>,
+}
+impl Display for PlayedMove
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		match self.castle_state
+		{
+			None => write!(
+				f,
+				"{}{}{}",
+				self.piece.piece_type,
+				self.capture.is_some().then_some("x").unwrap_or_default(),
+				self.mov.to
+			),
+			Some(CastleState::Kingside) => write!(f, "O-O"),
+			Some(CastleState::Queenside) => write!(f, "O-O-O"),
+		}
+	}
+}
+impl PlayedMove
+{
+	pub fn from(&self) -> Pos
+	{
+		self.mov.from
+	}
+	pub fn to(&self) -> Pos
+	{
+		self.mov.to
+	}
+
+	pub fn check_state(&self) -> CheckState
+	{
+		self.check_state
+	}
+	pub fn piece(&self) -> Piece
+	{
+		self.piece
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Capture
+{
+	pub pos: Pos,
+	pub piece: Piece,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckState
+{
+	None,
+	Check,
+	Checkmate,
+}
+impl Display for CheckState
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		write!(
+			f,
+			"{}",
+			match self
+			{
+				Self::None => "",
+				Self::Check => "+",
+				Self::Checkmate => "#",
+			}
+		)
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CastleState
+{
+	Kingside,
+	Queenside,
+}
+impl CastleState
+{
+	pub fn direction(self) -> Vec2i
+	{
+		match self
+		{
+			Self::Kingside => Vec2i::RIGHT,
+			Self::Queenside => Vec2i::LEFT,
+		}
+	}
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct CastleLegality
+{
+	pub has_king_moved: WhiteBlackPair<bool>,
+	pub has_a_rook_moved: WhiteBlackPair<bool>,
+	pub has_h_rook_moved: WhiteBlackPair<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -67,6 +67,25 @@ pub enum PieceType
 	Queen,
 	King,
 }
+impl Display for PieceType
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		write!(
+			f,
+			"{}",
+			match self
+			{
+				Self::Pawn => "",
+				Self::Knight => "N",
+				Self::Bishop => "B",
+				Self::Rook => "R",
+				Self::Queen => "Q",
+				Self::King => "K",
+			}
+		)
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color
