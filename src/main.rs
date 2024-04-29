@@ -4,7 +4,6 @@
 pub mod board;
 mod engine;
 pub mod icons;
-pub mod pieces;
 
 macro_rules! color {
 	($rgb:expr) => {
@@ -16,17 +15,18 @@ macro_rules! color {
 	};
 }
 
-use std::collections::VecDeque;
-
-use board::{CheckState, PlayedMove};
 use eframe::{
 	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Vec2},
 	epaint::Hsva,
 };
 use engine::Engine;
-use pieces::Color;
+use std::collections::VecDeque;
 
-use crate::board::{Board, Move, Pos};
+use crate::board::{
+	moves::{CheckState, Move, PlayedMove},
+	pieces::Color,
+	Board, Pos,
+};
 
 fn main() -> Result<(), eframe::Error>
 {
@@ -67,6 +67,22 @@ struct Application
 	played_moves: VecDeque<PlayedMove>,
 	side_in_check: Option<Color>,
 	engine: Engine,
+}
+impl Application
+{
+	fn last_move(&self) -> Option<&PlayedMove>
+	{
+		self.played_moves.front()
+	}
+
+	fn play_move(&mut self, mov: Move)
+	{
+		let played_move = self.board.make_move(mov);
+		log::info!("{} plays {}", played_move.piece().color, played_move);
+		self.side_in_check =
+			(played_move.check_state() != CheckState::None).then(|| !played_move.piece().color);
+		self.played_moves.push_front(played_move);
+	}
 }
 impl Default for Application
 {
@@ -303,7 +319,7 @@ impl eframe::App for Application
 					}
 
 					// draw legal move target circles
-					if self.board.legal_moves.iter().any(|mv| {
+					if self.board.legal_moves().iter().any(|mv| {
 						self.dragging_index
 							.is_some_and(|drag_idx| drag_idx == mv.from.index())
 							&& mv.to == board_pos
@@ -333,7 +349,7 @@ impl eframe::App for Application
 				if self.board.to_move() == Color::Black
 				{
 					let bot_move = self.engine.generate_move(&mut self.board);
-					if self.board.legal_moves.contains(&bot_move)
+					if self.board.legal_moves().contains(&bot_move)
 					{
 						self.play_move(bot_move);
 					}
@@ -363,7 +379,7 @@ impl eframe::App for Application
 							self.last_interacted_pos = Some(board_pos);
 
 							let move_attempt = Move::new(Pos::from_index(old_index), board_pos);
-							if self.board.legal_moves.contains(&move_attempt)
+							if self.board.legal_moves().contains(&move_attempt)
 							{
 								self.play_move(move_attempt);
 							}
@@ -373,21 +389,5 @@ impl eframe::App for Application
 				}
 			});
 		});
-	}
-}
-impl Application
-{
-	fn last_move(&self) -> Option<&PlayedMove>
-	{
-		self.played_moves.front()
-	}
-
-	fn play_move(&mut self, mov: Move)
-	{
-		let played_move = self.board.make_move(mov);
-		log::info!("{} plays {}", played_move.piece().color, played_move);
-		self.side_in_check =
-			(played_move.check_state() != CheckState::None).then(|| !played_move.piece().color);
-		self.played_moves.push_front(played_move);
 	}
 }

@@ -1,9 +1,16 @@
-use std::{borrow::BorrowMut, fmt::Display};
+pub mod moves;
+pub mod pieces;
+mod positioning;
 
-use eframe::egui::Vec2;
+pub use positioning::*;
+
 use lazy_regex::Regex;
+use std::borrow::BorrowMut;
 
-use crate::pieces::{Color, Piece, PieceType, SlidingAxis};
+use self::{
+	moves::{Capture, CastleLegality, CastleSide, CheckState, Move, PlayedMove},
+	pieces::{Color, Piece, PieceType, SlidingAxis},
+};
 
 // TODO: check
 #[derive(Debug)]
@@ -13,7 +20,7 @@ pub struct Board
 	to_move: Color,
 	en_passant_target: Option<Pos>,
 	castle_legality: CastleLegality,
-	pub legal_moves: Vec<Move>,
+	legal_moves: Vec<Move>,
 }
 impl Default for Board
 {
@@ -62,19 +69,7 @@ impl std::ops::IndexMut<Pos> for Board
 }
 impl Board
 {
-	// pub fn has_king_moved(&self) -> WhiteBlackPair<bool>
-	// {
-	// 	self.castle_legality.has_king_moved
-	// }
-	// pub fn has_a_rook_moved(&self) -> WhiteBlackPair<bool>
-	// {
-	// 	self.castle_legality.has_a_rook_moved
-	// }
-	// pub fn has_h_rook_moved(&self) -> WhiteBlackPair<bool>
-	// {
-	// 	self.castle_legality.has_h_rook_moved
-	// }
-
+	// conversion
 	fn new(
 		pieces: [Option<Piece>; 64],
 		to_move: Color,
@@ -166,6 +161,7 @@ impl Board
 		self.to_move
 	}
 
+	// accessors
 	pub fn en_passant_target(&self) -> Option<Pos>
 	{
 		self.en_passant_target
@@ -174,6 +170,11 @@ impl Board
 	pub fn castle_legality(&self) -> CastleLegality
 	{
 		self.castle_legality
+	}
+
+	pub fn legal_moves(&self) -> &[Move]
+	{
+		&self.legal_moves
 	}
 
 	fn regen_legal_moves(&mut self)
@@ -517,427 +518,5 @@ impl Board
 				.unwrap_or_else(|| panic!("{color} king not found!"))
 				.0,
 		)
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Move
-{
-	pub from: Pos,
-	pub to: Pos,
-}
-impl Move
-{
-	pub fn new(from: Pos, to: Pos) -> Self
-	{
-		Self { from, to }
-	}
-
-	pub fn offset(self) -> Vec2i
-	{
-		self.to.offset_from(self.from)
-	}
-}
-impl Display for Move
-{
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-	{
-		write!(f, "{} --> {}", self.from, self.to)
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PlayedMove
-{
-	mov: Move,
-	piece: Piece,
-	capture: Option<Capture>,
-	castle_state: Option<CastleSide>,
-	check_state: CheckState,
-	previous_castle_legality: CastleLegality,
-	previous_en_passant: Option<Pos>,
-}
-impl Display for PlayedMove
-{
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-	{
-		match self.castle_state
-		{
-			None => write!(
-				f,
-				"{}{}{}",
-				self.piece.piece_type,
-				self.capture.is_some().then_some("x").unwrap_or_default(),
-				self.mov.to
-			),
-			Some(CastleSide::Kingside) => write!(f, "O-O"),
-			Some(CastleSide::Queenside) => write!(f, "O-O-O"),
-		}
-	}
-}
-impl PlayedMove
-{
-	pub fn from(&self) -> Pos
-	{
-		self.mov.from
-	}
-	pub fn to(&self) -> Pos
-	{
-		self.mov.to
-	}
-
-	pub fn check_state(&self) -> CheckState
-	{
-		self.check_state
-	}
-	pub fn piece(&self) -> Piece
-	{
-		self.piece
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Capture
-{
-	pub pos: Pos,
-	pub piece: Piece,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CheckState
-{
-	None,
-	Check,
-	Checkmate,
-}
-impl Display for CheckState
-{
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-	{
-		write!(
-			f,
-			"{}",
-			match self
-			{
-				Self::None => "",
-				Self::Check => "+",
-				Self::Checkmate => "#",
-			}
-		)
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CastleSide
-{
-	Kingside,
-	Queenside,
-}
-impl CastleSide
-{
-	pub fn direction(self) -> Vec2i
-	{
-		match self
-		{
-			Self::Kingside => Vec2i::RIGHT,
-			Self::Queenside => Vec2i::LEFT,
-		}
-	}
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-// these are all independently variable from one another
-// and i dont see the need to make the type a separate enum
-// -morgan 2024-04-28
-#[allow(clippy::struct_excessive_bools)]
-pub struct CastleLegality
-{
-	white_kingside: bool,
-	white_queenside: bool,
-	black_kingside: bool,
-	black_queenside: bool,
-}
-impl CastleLegality
-{
-	pub fn is_allowed(self, color: Color, side: CastleSide) -> bool
-	{
-		match (color, side)
-		{
-			(Color::White, CastleSide::Kingside) => self.white_kingside,
-			(Color::White, CastleSide::Queenside) => self.white_queenside,
-			(Color::Black, CastleSide::Kingside) => self.black_kingside,
-			(Color::Black, CastleSide::Queenside) => self.black_queenside,
-		}
-	}
-
-	pub fn disallow(&mut self, color: Color, side: CastleSide)
-	{
-		*self.value_of(color, side) = false;
-	}
-
-	pub fn disallow_for_color(&mut self, color: Color)
-	{
-		*self.value_of(color, CastleSide::Kingside) = false;
-		*self.value_of(color, CastleSide::Queenside) = false;
-	}
-
-	fn value_of(&mut self, color: Color, side: CastleSide) -> &mut bool
-	{
-		match (color, side)
-		{
-			(Color::White, CastleSide::Kingside) => &mut self.white_kingside,
-			(Color::White, CastleSide::Queenside) => &mut self.white_queenside,
-			(Color::Black, CastleSide::Kingside) => &mut self.black_kingside,
-			(Color::Black, CastleSide::Queenside) => &mut self.black_queenside,
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pos
-{
-	tile_index: u8,
-}
-impl From<Vec2> for Pos
-{
-	fn from(value: Vec2) -> Self
-	{
-		Self {
-			tile_index: 8 * (value.y.clamp(0.0, 8.0) as u8)
-				+ (value.x.clamp(0.0, 8.0) as u8).clamp(0, 7),
-		}
-	}
-}
-impl Pos
-{
-	pub const fn from_index(tile_index: usize) -> Self
-	{
-		Self {
-			tile_index: tile_index as u8,
-		}
-	}
-	/// 0-indexed; ranks from bottom to top
-	pub const fn from_rank_file(rank: u8, file: u8) -> Self
-	{
-		Self::from_top_down_rank_file(7 - rank, file)
-	}
-	pub const fn from_top_down_rank_file(rank: u8, file: u8) -> Self
-	{
-		Self {
-			tile_index: 8 * rank + file,
-		}
-	}
-
-	pub const fn rank(self) -> u8
-	{
-		7 - (self.tile_index / 8)
-	}
-	pub const fn top_down_rank(self) -> u8
-	{
-		self.tile_index / 8
-	}
-	pub const fn file(self) -> u8
-	{
-		self.tile_index % 8
-	}
-	pub const fn rank_file(self) -> (u8, u8)
-	{
-		(self.rank(), self.file())
-	}
-	pub const fn index(self) -> usize
-	{
-		self.tile_index as usize
-	}
-
-	pub fn file_char(self) -> char
-	{
-		char::from_u32(u32::from(self.file()) + 97).expect("Invalid file character!")
-	}
-
-	pub fn move_by(self, offset: Vec2i) -> Option<Self>
-	{
-		let (signed_rank, signed_file) = (i32::from(self.rank()), i32::from(self.file()));
-		let unclamped_pos = ((signed_rank + offset.rank), (signed_file + offset.file));
-		let new_pos = ((0..=7).contains(&unclamped_pos.0) && (0..=7).contains(&unclamped_pos.1))
-			.then(|| {
-				Self::from_rank_file(
-					unclamped_pos.0.clamp(0, 7) as u8,
-					unclamped_pos.1.clamp(0, 7) as u8,
-				)
-			});
-
-		new_pos.and_then(|pos| (pos != self).then_some(pos))
-	}
-
-	pub fn offset_from(self, other: Self) -> Vec2i
-	{
-		Vec2i::new(
-			i32::from(self.file()) - i32::from(other.file()),
-			i32::from(self.rank()) - i32::from(other.rank()),
-		)
-	}
-
-	pub fn to_left_edge(self) -> Self
-	{
-		Self::from_rank_file(self.rank(), 0)
-	}
-	pub fn to_right_edge(self) -> Self
-	{
-		Self::from_rank_file(self.rank(), 7)
-	}
-
-	pub fn to_edge_in_direction_of(self, offset: Vec2i) -> Self
-	{
-		let (horizontal, vertical) = offset.directions();
-		let file = match horizontal
-		{
-			Some(HorizontalDirection::Left) => 0,
-			Some(HorizontalDirection::Right) => 7,
-			None => self.file(),
-		};
-		let rank = match vertical
-		{
-			Some(VerticalDirection::Down) => 0,
-			Some(VerticalDirection::Up) => 7,
-			None => self.rank(),
-		};
-
-		Self::from_rank_file(rank, file)
-	}
-}
-impl Display for Pos
-{
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-	{
-		write!(f, "{}{}", self.file_char(), self.rank() + 1)
-	}
-}
-impl std::ops::Add<Vec2i> for Pos
-{
-	type Output = Option<Self>;
-
-	fn add(self, rhs: Vec2i) -> Self::Output
-	{
-		self.move_by(rhs)
-	}
-}
-impl std::ops::Add<Vec2i> for Option<Pos>
-{
-	type Output = Self;
-
-	fn add(self, rhs: Vec2i) -> Self::Output
-	{
-		self.and_then(|lhs| lhs + rhs)
-	}
-}
-impl std::ops::Sub<Vec2i> for Pos
-{
-	type Output = Option<Self>;
-
-	fn sub(self, rhs: Vec2i) -> Self::Output
-	{
-		self.move_by(-rhs)
-	}
-}
-impl std::ops::Sub<Vec2i> for Option<Pos>
-{
-	type Output = Self;
-
-	fn sub(self, rhs: Vec2i) -> Self::Output
-	{
-		self.and_then(|lhs| lhs - rhs)
-	}
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-enum HorizontalDirection
-{
-	Left,
-	Right,
-}
-impl HorizontalDirection
-{
-	fn from_i32(value: i32) -> Option<Self>
-	{
-		(value < 0)
-			.then_some(Self::Left)
-			.or_else(|| (value > 0).then_some(Self::Right))
-	}
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-enum VerticalDirection
-{
-	Up,
-	Down,
-}
-impl VerticalDirection
-{
-	fn from_i32(value: i32) -> Option<Self>
-	{
-		(value < 0)
-			.then_some(Self::Down)
-			.or_else(|| (value > 0).then_some(Self::Up))
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Vec2i
-{
-	pub file: i32,
-	pub rank: i32,
-}
-impl Vec2i
-{
-	pub const LEFT: Self = Self::new(-1, 0);
-	pub const UP: Self = Self::new(0, 1);
-	pub const RIGHT: Self = Self::new(1, 0);
-	pub const DOWN: Self = Self::new(0, -1);
-
-	pub const fn new(file: i32, rank: i32) -> Self
-	{
-		Self { file, rank }
-	}
-
-	pub fn normalized(self) -> Self
-	{
-		Self::new(
-			self.file.checked_div(self.file.abs()).unwrap_or_default(),
-			self.rank.checked_div(self.rank.abs()).unwrap_or_default(),
-		)
-	}
-
-	fn directions(self) -> (Option<HorizontalDirection>, Option<VerticalDirection>)
-	{
-		let normalized = self.normalized();
-		(
-			HorizontalDirection::from_i32(normalized.file),
-			VerticalDirection::from_i32(normalized.rank),
-		)
-	}
-}
-impl std::ops::Neg for Vec2i
-{
-	type Output = Self;
-
-	fn neg(self) -> Self::Output
-	{
-		Self::new(-self.file, -self.rank)
-	}
-}
-impl std::ops::Mul<i32> for Vec2i
-{
-	type Output = Self;
-
-	fn mul(self, rhs: i32) -> Self::Output
-	{
-		Self::new(self.file * rhs, self.rank * rhs)
-	}
-}
-impl Display for Vec2i
-{
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-	{
-		write!(f, "({}, {})", self.file, self.rank)
 	}
 }

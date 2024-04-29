@@ -1,6 +1,6 @@
 use eframe::egui::{include_image, ImageSource};
 
-use crate::pieces::{Color, Piece, PieceType};
+use crate::board::pieces::{Color, Piece, PieceType};
 
 pub const WHITE_BISHOP: ImageSource = include_image!("../textures/white_bishop.svg");
 pub const WHITE_KING: ImageSource = include_image!("../textures/white_king.svg");
@@ -8,7 +8,6 @@ pub const WHITE_KNIGHT: ImageSource = include_image!("../textures/white_knight.s
 pub const WHITE_PAWN: ImageSource = include_image!("../textures/white_pawn.svg");
 pub const WHITE_QUEEN: ImageSource = include_image!("../textures/white_queen.svg");
 pub const WHITE_ROOK: ImageSource = include_image!("../textures/white_rook.svg");
-
 pub const BLACK_BISHOP: ImageSource = include_image!("../textures/black_bishop.svg");
 pub const BLACK_KING: ImageSource = include_image!("../textures/black_king.svg");
 pub const BLACK_KNIGHT: ImageSource = include_image!("../textures/black_knight.svg");
