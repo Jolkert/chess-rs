@@ -60,20 +60,17 @@ impl Pos
 
 	pub fn move_by(self, offset: Vec2i) -> Option<Self>
 	{
-		let (signed_file, signed_rank) = (i32::from(self.file()), i32::from(self.rank()));
+		let raw_sum = self.raw_add(offset);
+		((0..7).contains(&raw_sum.file) && (0..7).contains(&raw_sum.rank))
+			.then(|| Self::from_file_rank(raw_sum.file as u8, raw_sum.rank as u8))
+	}
 
-		let (unclamped_file, unclamped_rank) =
-			((signed_file + offset.file), (signed_rank + offset.rank));
-
-		let new_pos = ((0..=7).contains(&unclamped_file) && (0..=7).contains(&unclamped_file))
-			.then(|| {
-				Self::from_file_rank(
-					unclamped_file.clamp(0, 7) as u8,
-					unclamped_rank.clamp(0, 7) as u8,
-				)
-			});
-
-		new_pos.and_then(|pos| (pos != self).then_some(pos))
+	// this is terrible name but idk what to call this -2024-04-29
+	/// Same as [`move_by`][Pos::move_by], but returns [`None`] if the start end end positions are the same
+	pub fn checked_move(self, offset: Vec2i) -> Option<Self>
+	{
+		self.move_by(offset)
+			.and_then(|pos| (self != pos).then_some(pos))
 	}
 
 	pub fn offset_from(self, other: Self) -> Vec2i
@@ -112,6 +109,7 @@ impl Pos
 		Self::from_file_rank(file, rank)
 	}
 }
+
 impl Display for Pos
 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
@@ -119,40 +117,33 @@ impl Display for Pos
 		write!(f, "{}{}", self.file_char(), self.rank() + 1)
 	}
 }
-impl std::ops::Add<Vec2i> for Pos
-{
-	type Output = Option<Self>;
 
-	fn add(self, rhs: Vec2i) -> Self::Output
+impl Pos
+{
+	fn raw_add(self, rhs: Vec2i) -> Vec2i
 	{
-		self.move_by(rhs)
+		Vec2i::new(
+			i32::from(self.file()) + rhs.file,
+			i32::from(self.rank()) + rhs.rank,
+		)
 	}
 }
-impl std::ops::Add<Vec2i> for Option<Pos>
+impl std::ops::Add<Vec2i> for Pos
 {
 	type Output = Self;
 
 	fn add(self, rhs: Vec2i) -> Self::Output
 	{
-		self.and_then(|lhs| lhs + rhs)
+		self.move_by(rhs).expect("Board position out of bounds!")
 	}
 }
 impl std::ops::Sub<Vec2i> for Pos
 {
-	type Output = Option<Self>;
-
-	fn sub(self, rhs: Vec2i) -> Self::Output
-	{
-		self.move_by(-rhs)
-	}
-}
-impl std::ops::Sub<Vec2i> for Option<Pos>
-{
 	type Output = Self;
 
 	fn sub(self, rhs: Vec2i) -> Self::Output
 	{
-		self.and_then(|lhs| lhs - rhs)
+		self + (-rhs)
 	}
 }
 
@@ -232,6 +223,24 @@ impl std::ops::Neg for Vec2i
 		Self::new(-self.file, -self.rank)
 	}
 }
+impl std::ops::Add for Vec2i
+{
+	type Output = Self;
+
+	fn add(self, rhs: Self) -> Self::Output
+	{
+		Self::new(self.file + rhs.file, self.rank - rhs.rank)
+	}
+}
+impl std::ops::Sub for Vec2i
+{
+	type Output = Self;
+
+	fn sub(self, rhs: Self) -> Self::Output
+	{
+		self + (-rhs)
+	}
+}
 impl std::ops::Mul<i32> for Vec2i
 {
 	type Output = Self;
@@ -239,6 +248,15 @@ impl std::ops::Mul<i32> for Vec2i
 	fn mul(self, rhs: i32) -> Self::Output
 	{
 		Self::new(self.file * rhs, self.rank * rhs)
+	}
+}
+impl std::ops::Mul<Vec2i> for i32
+{
+	type Output = Vec2i;
+
+	fn mul(self, rhs: Vec2i) -> Self::Output
+	{
+		rhs * self
 	}
 }
 impl Display for Vec2i
@@ -267,11 +285,19 @@ mod test
 	{
 		assert_eq!(
 			Pos::from_file_rank(1, 5) + Vec2i::new(2, 1),
-			Some(Pos::from_file_rank(3, 6))
+			Pos::from_file_rank(3, 6)
 		);
-		// this behavior is unintuitive and should probably be rethought -morgan 2024-04-28
-		assert_eq!(Pos::from_file_rank(4, 2) + Vec2i::new(0, 0), None);
 
-		assert_eq!(Pos::from_file_rank(7, 7) + Vec2i::new(2, 2), None);
+		assert_eq!(
+			Pos::from_file_rank(4, 2) + Vec2i::new(0, 0),
+			Pos::from_file_rank(4, 2)
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "Board position out of bounds!")]
+	fn out_of_bounds_addition()
+	{
+		let _ = Pos::from_file_rank(7, 7) + Vec2i::new(2, 2);
 	}
 }
