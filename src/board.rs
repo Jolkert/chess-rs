@@ -8,7 +8,7 @@ use lazy_regex::Regex;
 use std::borrow::BorrowMut;
 
 use self::{
-	moves::{Capture, CastleLegality, CastleSide, CheckState, Move, PlayedMove},
+	moves::{Capture, CastleLegality, CastleSide, CheckState, Move, MovementDirection, PlayedMove},
 	pieces::{Color, Piece, PieceType, SlidingAxis},
 };
 
@@ -140,7 +140,7 @@ impl Board
 				.unwrap();
 			let rank = en_passant_str.chars().nth(1).unwrap().to_digit(10).unwrap();
 
-			Pos::from_rank_file(8 - rank as u8, file)
+			Pos::from_file_rank(8 - rank as u8, file)
 		});
 
 		Some(Self::new(
@@ -518,5 +518,44 @@ impl Board
 				.unwrap_or_else(|| panic!("{color} king not found!"))
 				.0,
 		)
+	}
+}
+
+#[cfg(test)]
+mod test
+{
+	use super::Board;
+
+	#[test]
+	fn move_generation_accuracy()
+	{
+		let mut starting_position_board =
+			Board::from_fen_string("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ")
+				.expect("Invalid FEN string fed to test!");
+
+		assert_eq!(starting_position_board.move_count_with_depth(3), 8902);
+	}
+
+	impl Board
+	{
+		fn move_count_with_depth(&mut self, depth: u32) -> u64
+		{
+			if depth == 0
+			{
+				1
+			}
+			else
+			{
+				let mut count = 0u64;
+				for mov in Vec::from(self.legal_moves())
+				{
+					let played_move = self.make_move(mov);
+					count += self.move_count_with_depth(depth - 1);
+					self.unmake_move(&played_move);
+				}
+
+				count
+			}
+		}
 	}
 }

@@ -177,3 +177,6 @@ impl CastleLegality
 		}
 	}
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MovementDirection {}

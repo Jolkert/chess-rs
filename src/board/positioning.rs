@@ -25,7 +25,7 @@ impl Pos
 		}
 	}
 	/// 0-indexed; ranks from bottom to top
-	pub const fn from_rank_file(rank: u8, file: u8) -> Self
+	pub const fn from_file_rank(file: u8, rank: u8) -> Self
 	{
 		Self {
 			tile_index: 8 * (7 - rank) + file,
@@ -60,13 +60,16 @@ impl Pos
 
 	pub fn move_by(self, offset: Vec2i) -> Option<Self>
 	{
-		let (signed_rank, signed_file) = (i32::from(self.rank()), i32::from(self.file()));
-		let unclamped_pos = ((signed_rank + offset.rank), (signed_file + offset.file));
-		let new_pos = ((0..=7).contains(&unclamped_pos.0) && (0..=7).contains(&unclamped_pos.1))
+		let (signed_file, signed_rank) = (i32::from(self.file()), i32::from(self.rank()));
+
+		let (unclamped_file, unclamped_rank) =
+			((signed_file + offset.file), (signed_rank + offset.rank));
+
+		let new_pos = ((0..=7).contains(&unclamped_file) && (0..=7).contains(&unclamped_file))
 			.then(|| {
-				Self::from_rank_file(
-					unclamped_pos.0.clamp(0, 7) as u8,
-					unclamped_pos.1.clamp(0, 7) as u8,
+				Self::from_file_rank(
+					unclamped_file.clamp(0, 7) as u8,
+					unclamped_rank.clamp(0, 7) as u8,
 				)
 			});
 
@@ -83,11 +86,11 @@ impl Pos
 
 	pub fn to_left_edge(self) -> Self
 	{
-		Self::from_rank_file(self.rank(), 0)
+		Self::from_file_rank(0, self.rank())
 	}
 	pub fn to_right_edge(self) -> Self
 	{
-		Self::from_rank_file(self.rank(), 7)
+		Self::from_file_rank(7, self.rank())
 	}
 
 	pub fn to_edge_in_direction_of(self, offset: Vec2i) -> Self
@@ -106,7 +109,7 @@ impl Pos
 			None => self.rank(),
 		};
 
-		Self::from_rank_file(rank, file)
+		Self::from_file_rank(file, rank)
 	}
 }
 impl Display for Pos
@@ -243,5 +246,32 @@ impl Display for Vec2i
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
 	{
 		write!(f, "({}, {})", self.file, self.rank)
+	}
+}
+
+#[cfg(test)]
+mod test
+{
+	use crate::board::{Pos, Vec2i};
+
+	#[test]
+	fn pos_initialization()
+	{
+		assert_eq!(Pos::from_file_rank(4, 6), Pos::from_index(12));
+		assert_eq!(Pos::from_file_rank(0, 0), Pos::from_index(56));
+		assert_eq!(Pos::from_file_rank(0, 7), Pos::from_index(0));
+	}
+
+	#[test]
+	fn pos_addition()
+	{
+		assert_eq!(
+			Pos::from_file_rank(1, 5) + Vec2i::new(2, 1),
+			Some(Pos::from_file_rank(3, 6))
+		);
+		// this behavior is unintuitive and should probably be rethought -morgan 2024-04-28
+		assert_eq!(Pos::from_file_rank(4, 2) + Vec2i::new(0, 0), None);
+
+		assert_eq!(Pos::from_file_rank(7, 7) + Vec2i::new(2, 2), None);
 	}
 }

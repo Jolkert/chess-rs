@@ -243,20 +243,20 @@ impl eframe::App for Application
 						);
 					}
 
-					// painter.text(
-					// 	tile_rect.left_top(),
-					// 	Align2::LEFT_TOP,
-					// 	board_pos.index().to_string(),
-					// 	FontId::monospace(10.0),
-					// 	Color32::BLACK,
-					// );
-					// painter.text(
-					// 	tile_rect.left_top() + Vec2::new(0.0, 15.0),
-					// 	Align2::LEFT_TOP,
-					// 	format!("({}, {})", board_pos.file(), board_pos.top_down_rank()),
-					// 	FontId::monospace(10.0),
-					// 	Color32::BLACK,
-					// );
+					painter.text(
+						tile_rect.left_top(),
+						Align2::LEFT_TOP,
+						board_pos.index().to_string(),
+						FontId::monospace(10.0),
+						Color32::BLACK,
+					);
+					painter.text(
+						tile_rect.left_top() + Vec2::new(0.0, 15.0),
+						Align2::LEFT_TOP,
+						format!("({}, {})", board_pos.file(), board_pos.top_down_rank()),
+						FontId::monospace(10.0),
+						Color32::BLACK,
+					);
 
 					let text_color = Color32::from(
 						if (board_pos.file() + board_pos.rank()) % 2 == 0
