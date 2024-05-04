@@ -280,13 +280,9 @@ impl Board
 									.compass_direction(),
 							);
 
-							!check_ray.is_some_and(|ray| {
-								self.first_hit_ignoring(ray, [Some(mov.from)]).is_some_and(
-									|hit_piece| {
-										hit_piece.can_slide_in_direction(ray.direction)
-											&& hit_piece.color() != moving_piece.color
-									},
-								)
+							check_ray.map_or(false, |ray| {
+								ray.first_hit(mov.to, king_pos)
+									.map_or(true, |hit_pos| hit_pos != king_pos)
 							})
 						})
 				})
@@ -860,7 +856,7 @@ mod test
 
 	impl Board
 	{
-		fn perft(&mut self, depth: u32) -> u64
+		pub fn perft(&mut self, depth: u32) -> u64
 		{
 			if depth == 0
 			{

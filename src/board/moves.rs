@@ -27,7 +27,7 @@ impl Display for Move
 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
 	{
-		write!(f, "{} --> {}", self.from, self.to)
+		write!(f, "{}{}", self.from, self.to)
 	}
 }
 
