@@ -1,6 +1,8 @@
 use eframe::egui::Vec2;
 use std::fmt::Display;
 
+use super::pieces::SlidingAxis;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pos
 {
@@ -61,7 +63,7 @@ impl Pos
 	pub fn move_by(self, offset: Vec2i) -> Option<Self>
 	{
 		let raw_sum = self.raw_add(offset);
-		((0..7).contains(&raw_sum.file) && (0..7).contains(&raw_sum.rank))
+		((0..=7).contains(&raw_sum.file) && (0..=7).contains(&raw_sum.rank))
 			.then(|| Self::from_file_rank(raw_sum.file as u8, raw_sum.rank as u8))
 	}
 
@@ -78,6 +80,13 @@ impl Pos
 		Vec2i::new(
 			i32::from(self.file()) - i32::from(other.file()),
 			i32::from(self.rank()) - i32::from(other.rank()),
+		)
+	}
+	pub fn offset_to(self, other: Self) -> Vec2i
+	{
+		Vec2i::new(
+			i32::from(other.file()) - i32::from(self.file()),
+			i32::from(other.rank()) - i32::from(self.rank()),
 		)
 	}
 
@@ -163,22 +172,6 @@ impl HorizontalDirection
 	}
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-enum VerticalDirection
-{
-	Up,
-	Down,
-}
-impl VerticalDirection
-{
-	fn from_i32(value: i32) -> Option<Self>
-	{
-		(value < 0)
-			.then_some(Self::Down)
-			.or_else(|| (value > 0).then_some(Self::Up))
-	}
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Vec2i
 {
@@ -187,10 +180,14 @@ pub struct Vec2i
 }
 impl Vec2i
 {
-	pub const LEFT: Self = Self::new(-1, 0);
-	pub const UP: Self = Self::new(0, 1);
-	pub const RIGHT: Self = Self::new(1, 0);
-	pub const DOWN: Self = Self::new(0, -1);
+	pub const NORTH: Self = Self::new(0, 1);
+	pub const NORTH_EAST: Self = Self::new(1, 1);
+	pub const EAST: Self = Self::new(1, 0);
+	pub const SOUTH_EAST: Self = Self::new(1, -1);
+	pub const SOUTH: Self = Self::new(0, -1);
+	pub const SOUTH_WEST: Self = Self::new(-1, -1);
+	pub const WEST: Self = Self::new(-1, 0);
+	pub const NORTH_WEST: Self = Self::new(-1, 1);
 
 	pub const fn new(file: i32, rank: i32) -> Self
 	{
@@ -199,10 +196,7 @@ impl Vec2i
 
 	pub fn normalized(self) -> Self
 	{
-		Self::new(
-			self.file.checked_div(self.file.abs()).unwrap_or_default(),
-			self.rank.checked_div(self.rank.abs()).unwrap_or_default(),
-		)
+		Self::new(self.file.clamp(-1, 1), self.rank.clamp(-1, 1))
 	}
 
 	fn directions(self) -> (Option<HorizontalDirection>, Option<VerticalDirection>)
@@ -212,6 +206,28 @@ impl Vec2i
 			HorizontalDirection::from_i32(normalized.file),
 			VerticalDirection::from_i32(normalized.rank),
 		)
+	}
+
+	pub fn is_straight_line(self) -> bool
+	{
+		self.rank == 0 || self.file == 0 || self.rank.abs() == self.file.abs()
+	}
+
+	pub fn compass_direction(self) -> Direction
+	{
+		let normalized = self.normalized();
+		match (normalized.rank, normalized.file)
+		{
+			(0, 1) => Direction::North,
+			(1, 1) => Direction::Northeast,
+			(1, 0) => Direction::East,
+			(1, -1) => Direction::Southeast,
+			(0, -1) => Direction::South,
+			(-1, -1) => Direction::Southwest,
+			(-1, 0) => Direction::West,
+			(-1, 1) => Direction::Northwest,
+			_ => panic!("Normalized Vec2i resulted in invalid values!"),
+		}
 	}
 }
 impl std::ops::Neg for Vec2i
@@ -267,10 +283,67 @@ impl Display for Vec2i
 	}
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Direction
+{
+	North,
+	Northeast,
+	East,
+	Southeast,
+	South,
+	Southwest,
+	West,
+	Northwest,
+}
+impl Direction
+{
+	pub fn vector(self) -> Vec2i
+	{
+		// :( -morgan 2024-04-29
+		use Direction::{East, North, Northeast, Northwest, South, Southeast, Southwest, West};
+		match self
+		{
+			North => Vec2i::NORTH,
+			Northeast => Vec2i::NORTH_EAST,
+			East => Vec2i::EAST,
+			Southeast => Vec2i::SOUTH_EAST,
+			South => Vec2i::SOUTH,
+			Southwest => Vec2i::SOUTH_WEST,
+			West => Vec2i::WEST,
+			Northwest => Vec2i::NORTH_WEST,
+		}
+	}
+
+	pub fn axis(self) -> SlidingAxis
+	{
+		match self
+		{
+			Self::North | Self::East | Self::South | Self::West => SlidingAxis::Orthogonal,
+			_ => SlidingAxis::Diagonal,
+		}
+	}
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+enum VerticalDirection
+{
+	Up,
+	Down,
+}
+impl VerticalDirection
+{
+	fn from_i32(value: i32) -> Option<Self>
+	{
+		(value < 0)
+			.then_some(Self::Down)
+			.or_else(|| (value > 0).then_some(Self::Up))
+	}
+}
+
 #[cfg(test)]
 mod test
 {
-	use crate::board::{Pos, Vec2i};
+	use crate::board::{positioning::HorizontalDirection, Pos, Vec2i};
 
 	#[test]
 	fn pos_initialization()
@@ -291,6 +364,23 @@ mod test
 		assert_eq!(
 			Pos::from_file_rank(4, 2) + Vec2i::new(0, 0),
 			Pos::from_file_rank(4, 2)
+		);
+
+		assert_eq!(
+			Pos::from_file_rank(2, 6) + Vec2i::NORTH_EAST,
+			Pos::from_file_rank(3, 7)
+		);
+	}
+
+	#[test]
+	fn offset_direction()
+	{
+		let pos_a = Pos::from_index(30);
+		let pos_b = Pos::from_index(31);
+
+		assert_eq!(
+			pos_a.offset_to(pos_b).directions().0,
+			Some(HorizontalDirection::Right)
 		);
 	}
 

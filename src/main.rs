@@ -67,6 +67,7 @@ struct Application
 	played_moves: VecDeque<PlayedMove>,
 	side_in_check: Option<Color>,
 	engine: Engine,
+	debug_mode: bool,
 }
 impl Application
 {
@@ -99,6 +100,7 @@ impl Default for Application
 			played_moves: VecDeque::new(),
 			side_in_check: None,
 			engine: Engine,
+			debug_mode: false,
 		}
 	}
 }
@@ -176,6 +178,8 @@ impl eframe::App for Application
 						ui.color_edit_button_hsva(&mut self.light_square_color)
 							.labelled_by(label.id);
 					});
+
+					ui.checkbox(&mut self.debug_mode, "Debug mode");
 				});
 
 				// draw board
@@ -243,20 +247,23 @@ impl eframe::App for Application
 						);
 					}
 
-					painter.text(
-						tile_rect.left_top(),
-						Align2::LEFT_TOP,
-						board_pos.index().to_string(),
-						FontId::monospace(10.0),
-						Color32::BLACK,
-					);
-					painter.text(
-						tile_rect.left_top() + Vec2::new(0.0, 15.0),
-						Align2::LEFT_TOP,
-						format!("({}, {})", board_pos.file(), board_pos.top_down_rank()),
-						FontId::monospace(10.0),
-						Color32::BLACK,
-					);
+					if self.debug_mode
+					{
+						painter.text(
+							tile_rect.left_top(),
+							Align2::LEFT_TOP,
+							board_pos.index().to_string(),
+							FontId::monospace(10.0),
+							Color32::BLACK,
+						);
+						painter.text(
+							tile_rect.left_top() + Vec2::new(0.0, 15.0),
+							Align2::LEFT_TOP,
+							format!("({}, {})", board_pos.file(), board_pos.top_down_rank()),
+							FontId::monospace(10.0),
+							Color32::BLACK,
+						);
+					}
 
 					let text_color = Color32::from(
 						if (board_pos.file() + board_pos.rank()) % 2 == 0

@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, iter};
 
 use super::{
 	pieces::{Color, Piece},
@@ -71,6 +71,30 @@ impl PlayedMove
 		self.mov.to
 	}
 
+	pub fn is_en_passant(&self) -> bool
+	{
+		self.piece.is_pawn()
+			&& self
+				.previous_en_passant
+				.is_some_and(|ep_square| self.to() == ep_square)
+	}
+
+	pub fn revealed_squares(&self) -> impl Iterator<Item = Pos>
+	{
+		// (
+		// 	self.capture.map(|c| c.pos),
+		// 	self.is_en_passant()
+		// 		.then(|| self.to() - self.piece.forward_vector()),
+		// )
+
+		iter::once(self.capture.map(|c| c.pos))
+			.chain(iter::once(
+				self.is_en_passant()
+					.then(|| self.to() - self.piece.forward_vector()),
+			))
+			.flatten()
+	}
+
 	pub fn check_state(&self) -> CheckState
 	{
 		self.check_state
@@ -124,8 +148,8 @@ impl CastleSide
 	{
 		match self
 		{
-			Self::Kingside => Vec2i::RIGHT,
-			Self::Queenside => Vec2i::LEFT,
+			Self::Kingside => Vec2i::EAST,
+			Self::Queenside => Vec2i::WEST,
 		}
 	}
 }
