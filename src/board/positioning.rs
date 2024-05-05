@@ -60,6 +60,29 @@ impl Pos
 		char::from_u32(u32::from(self.file()) + 97).expect("Invalid file character!")
 	}
 
+	pub fn knight_move_squares(self) -> impl Iterator<Item = Self>
+	{
+		Vec2i::KNIGHT_OFFSETS
+			.iter()
+			.filter_map(move |offset| self.move_by(*offset))
+	}
+
+	pub fn adjoining_squares(self) -> impl Iterator<Item = Self>
+	{
+		[
+			Vec2i::NORTH,
+			Vec2i::NORTH_EAST,
+			Vec2i::EAST,
+			Vec2i::SOUTH_EAST,
+			Vec2i::SOUTH,
+			Vec2i::SOUTH_WEST,
+			Vec2i::WEST,
+			Vec2i::NORTH_WEST,
+		]
+		.iter()
+		.filter_map(move |offset| self.move_by(*offset))
+	}
+
 	pub fn move_by(self, offset: Vec2i) -> Option<Self>
 	{
 		let raw_sum = self.raw_add(offset);
@@ -188,6 +211,16 @@ impl Vec2i
 	pub const SOUTH_WEST: Self = Self::new(-1, -1);
 	pub const WEST: Self = Self::new(-1, 0);
 	pub const NORTH_WEST: Self = Self::new(-1, 1);
+	pub const KNIGHT_OFFSETS: [Self; 8] = [
+		Self::new(2, 1),
+		Self::new(2, -1),
+		Self::new(-2, 1),
+		Self::new(-2, -1),
+		Self::new(1, 2),
+		Self::new(1, -2),
+		Self::new(-1, 2),
+		Self::new(-1, -2),
+	];
 
 	pub const fn new(file: i32, rank: i32) -> Self
 	{

@@ -75,14 +75,7 @@ impl Piece
 
 	pub fn forward_vector(self) -> Vec2i
 	{
-		if self.color == Color::White
-		{
-			Vec2i::new(0, 1)
-		}
-		else
-		{
-			Vec2i::new(0, -1)
-		}
+		self.color.forward_vector()
 	}
 }
 impl Display for Piece
@@ -206,6 +199,17 @@ pub enum Color
 {
 	White,
 	Black,
+}
+impl Color
+{
+	pub fn forward_vector(self) -> Vec2i
+	{
+		match self
+		{
+			Self::White => Vec2i::new(0, 1),
+			Self::Black => Vec2i::new(0, -1),
+		}
+	}
 }
 impl Display for Color
 {

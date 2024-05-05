@@ -1,10 +1,6 @@
 #![feature(unchecked_shifts, let_chains)]
 #![allow(clippy::cast_sign_loss)]
 
-pub mod board;
-mod engine;
-pub mod icons;
-
 macro_rules! color {
 	($rgb:expr) => {
 		Color32::from_rgb(
@@ -15,24 +11,46 @@ macro_rules! color {
 	};
 }
 
+use clap::{Parser, Subcommand};
 use eframe::{
 	egui::{self, Align2, Color32, FontId, Image, Rect, Rounding, Sense, Vec2},
 	epaint::Hsva,
 };
-use engine::Engine;
+
 use std::collections::VecDeque;
 
-use crate::board::{
-	moves::{CheckState, Move, PlayedMove},
-	pieces::Color,
-	Board, Pos,
+use chess::{
+	board::{
+		moves::{CheckState, Move, PlayedMove},
+		pieces::Color,
+		Board, Pos,
+	},
+	engine::Engine,
 };
 
-fn main() -> Result<(), eframe::Error>
+fn main()
 {
 	dotenv::dotenv().expect("Could not parse variables fromn .env file!");
 	env_logger::init();
 
+	let args = Arguments::parse();
+	match args.command.unwrap_or(Command::Play)
+	{
+		Command::Play => start_gui_game().unwrap_or_else(|err| panic!("{err}")),
+		Command::Perft {
+			depth,
+			starting_fen,
+		} =>
+		{
+			let mut board = Board::from_fen_string(&starting_fen).expect("Invalid FEN string!");
+			let perft_results = board.perft(depth);
+			println!("{perft_results}");
+		}
+	}
+}
+
+fn start_gui_game() -> Result<(), eframe::Error>
+{
 	let options = eframe::NativeOptions {
 		viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 720.0]),
 		default_theme: eframe::Theme::Dark,
@@ -49,11 +67,6 @@ fn main() -> Result<(), eframe::Error>
 			Box::<Application>::default()
 		}),
 	)
-}
-
-fn hsva_from_color32(color: Color32) -> Hsva
-{
-	Hsva::from_srgb([color.r(), color.g(), color.b()])
 }
 
 struct Application
@@ -95,7 +108,7 @@ impl Default for Application
 			board: Board::default(),
 			dragging_index: None,
 			last_interacted_pos: None,
-			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq h3 0 1"),
+			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
 
 			played_moves: VecDeque::new(),
 			side_in_check: None,
@@ -397,4 +410,41 @@ impl eframe::App for Application
 			});
 		});
 	}
+}
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Arguments
+{
+	#[command(subcommand)]
+	command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command
+{
+	Play,
+	Perft
+	{
+		depth: u32,
+
+		#[arg(
+			short,
+			long,
+			default_value = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+		)]
+		starting_fen: String,
+	},
+}
+impl Default for Command
+{
+	fn default() -> Self
+	{
+		Self::Play
+	}
+}
+
+fn hsva_from_color32(color: Color32) -> Hsva
+{
+	Hsva::from_srgb([color.r(), color.g(), color.b()])
 }

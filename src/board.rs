@@ -2,7 +2,7 @@ pub mod moves;
 pub mod pieces;
 mod positioning;
 
-use std::{collections::VecDeque, iter};
+use std::{collections::VecDeque, fmt::Display, fmt::Write};
 
 pub use positioning::*;
 
@@ -187,6 +187,11 @@ impl Board
 			.filter(move |piece| piece.color() == color)
 	}
 
+	pub fn last_move(&self) -> Option<&PlayedMove>
+	{
+		self.previous_moves.front()
+	}
+
 	pub fn en_passant_target(&self) -> Option<Pos>
 	{
 		self.en_passant_target
@@ -292,20 +297,13 @@ impl Board
 
 	fn is_move_en_passant(&self, mov: Move) -> bool
 	{
-		let result = self[mov.from].is_some_and(|piece| {
+		self[mov.from].is_some_and(|piece| {
 			piece.is_pawn()
 				&& mov.to.file() != mov.from.file()
 				&& self
 					.en_passant_target
 					.is_some_and(|ep_square| ep_square == mov.to)
-		});
-
-		if result
-		{
-			log::info!("Determined {mov} to be en_passant!");
-		}
-
-		result
+		})
 	}
 
 	/// Doesn't check that move is a capture, simply assumes it is
@@ -318,43 +316,80 @@ impl Board
 
 	fn pieces_attacking_king(&self, color: Color) -> Vec<PositionedPiece>
 	{
-		let Some(last_move) = self.previous_moves.front()
-		else
-		{
-			return Vec::new();
-		};
-
 		let king_pos = self.king_pos_of(color);
-
-		let direct_attacker = self[last_move.to()].and_then(|attacker| {
-			let positioned_attacker = PositionedPiece::new(last_move.to(), attacker);
-			self.piece_targeted_squares(positioned_attacker)
-				.contains(&king_pos)
-				.then_some(positioned_attacker)
-		});
-
-		let discovered_attackers = last_move.revealed_squares().filter_map(|square| {
-			let offset_from_king = square.offset_from(king_pos);
-			offset_from_king
-				.is_straight_line()
-				.then(|| {
-					let direction_from_king = offset_from_king.normalized().compass_direction();
-					let potential_attacker =
-						self.first_hit(SlidingRay::new(king_pos, direction_from_king));
-
-					potential_attacker.and_then(|piece| {
-						piece
-							.can_slide_in_direction(direction_from_king)
-							.then_some(piece)
-					})
-				})
+		self.last_move().map_or_else(
+			|| {
+				let knight_squares = king_pos.knight_move_squares().filter(|pos| {
+					self[*pos].is_some_and(|piece| piece == Piece::new(!color, PieceType::Knight))
+				});
+				let king_squares = king_pos.adjoining_squares().filter(|pos| {
+					self[*pos].is_some_and(|piece| piece.color != color && piece.is_king())
+				});
+				let pawn_squares = [
+					king_pos.move_by(Vec2i::EAST + color.forward_vector()),
+					king_pos.move_by(Vec2i::WEST + color.forward_vector()),
+				]
+				.into_iter()
 				.flatten()
-		});
+				.filter(|pos| {
+					self[*pos].is_some_and(|piece| piece.color != color && piece.is_pawn())
+				});
 
-		iter::once(direct_attacker)
-			.flatten()
-			.chain(discovered_attackers)
-			.collect()
+				let sliding_pieces = self.sliding_pieces_targeting(king_pos);
+
+				sliding_pieces
+					.chain(
+						knight_squares
+							.chain(king_squares)
+							.chain(pawn_squares)
+							.map(|pos| PositionedPiece::new(pos, self[pos].unwrap())),
+					)
+					.collect()
+			},
+			|last_move| {
+				let direct_attacker = self[last_move.to()].and_then(|attacker| {
+					let positioned_attacker = PositionedPiece::new(last_move.to(), attacker);
+					self.piece_targeted_squares(positioned_attacker)
+						.contains(&king_pos)
+						.then_some(positioned_attacker)
+				});
+
+				let discovered_attackers = last_move.revealed_squares().filter_map(|square| {
+					let offset_from_king = square.offset_from(king_pos);
+					offset_from_king
+						.is_straight_line()
+						.then(|| {
+							let direction_from_king =
+								offset_from_king.normalized().compass_direction();
+							let potential_attacker =
+								self.first_hit(SlidingRay::new(king_pos, direction_from_king));
+
+							potential_attacker.and_then(|piece| {
+								piece
+									.can_slide_in_direction(direction_from_king)
+									.then_some(piece)
+							})
+						})
+						.flatten()
+				});
+
+				direct_attacker
+					.iter()
+					.copied()
+					.chain(discovered_attackers)
+					.collect()
+			},
+		)
+	}
+
+	fn sliding_pieces_targeting(&self, from: Pos) -> impl Iterator<Item = PositionedPiece> + '_
+	{
+		SlidingAxis::Both
+			.allowed_directions()
+			.filter_map(move |direction| {
+				self.first_hit(SlidingRay::new(from, *direction))
+					.and_then(|piece| piece.can_slide_in_direction(*direction).then_some(piece))
+			})
 	}
 
 	fn first_hit(&self, ray: SlidingRay) -> Option<PositionedPiece>
@@ -713,6 +748,84 @@ impl Board
 			.position(|square| square.is_some_and(|piece| piece.is_king() && piece.color == color))
 			.map_or_else(|| panic!("Could not find {color} king!"), Pos::from_index)
 	}
+
+	pub fn perft(&mut self, depth: u32) -> PerftResults
+	{
+		let mut per_move = Vec::new();
+		let total_nodes = self.perft_recursive(depth, depth, &mut per_move);
+		PerftResults::new(total_nodes, per_move)
+	}
+
+	fn perft_recursive(
+		&mut self,
+		depth: u32,
+		original_depth: u32,
+		per_mvoe: &mut Vec<(Move, u64)>,
+	) -> u64
+	{
+		if depth == 0
+		{
+			1
+		}
+		else
+		{
+			let mut count = 0;
+			for mov in Vec::from(self.legal_moves())
+			{
+				let played_move = self.make_move(mov);
+				let current = self.perft_recursive(depth - 1, original_depth, per_mvoe);
+				count += current;
+
+				if depth == original_depth
+				{
+					per_mvoe.push((mov, current));
+				}
+				self.unmake_move(&played_move);
+			}
+
+			count
+		}
+	}
+}
+
+pub struct PerftResults
+{
+	total_nodes: u64,
+	per_move: Vec<(Move, u64)>,
+}
+impl PerftResults
+{
+	pub fn new(total_nodes: u64, per_move: impl Into<Vec<(Move, u64)>>) -> Self
+	{
+		Self {
+			total_nodes,
+			per_move: per_move.into(),
+		}
+	}
+
+	pub fn total_nodes(&self) -> u64
+	{
+		self.total_nodes
+	}
+	pub fn per_move(&self) -> &[(Move, u64)]
+	{
+		&self.per_move
+	}
+}
+impl Display for PerftResults
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		let string = self
+			.per_move()
+			.iter()
+			.fold(String::new(), |mut output, (mov, count)| {
+				let _ = writeln!(output, "{mov}: {count}");
+				output
+			});
+
+		write!(f, "{string}Searched {} nodes", self.total_nodes())
+	}
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -848,32 +961,9 @@ mod test
 			Board::from_fen_string("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ")
 				.expect("Invalid FEN string fed to test!");
 
-		assert_eq!(starting_position_board.perft(1), 20);
-		assert_eq!(starting_position_board.perft(2), 400);
-		assert_eq!(starting_position_board.perft(3), 8902);
-		assert_eq!(starting_position_board.perft(4), 197_281);
-	}
-
-	impl Board
-	{
-		pub fn perft(&mut self, depth: u32) -> u64
-		{
-			if depth == 0
-			{
-				1
-			}
-			else
-			{
-				let mut count = 0u64;
-				for mov in Vec::from(self.legal_moves())
-				{
-					let played_move = self.make_move(mov);
-					count += self.perft(depth - 1);
-					self.unmake_move(&played_move);
-				}
-
-				count
-			}
-		}
+		assert_eq!(starting_position_board.perft(1).total_nodes(), 20);
+		assert_eq!(starting_position_board.perft(2).total_nodes(), 400);
+		assert_eq!(starting_position_board.perft(3).total_nodes(), 8902);
+		assert_eq!(starting_position_board.perft(4).total_nodes(), 197_281);
 	}
 }
