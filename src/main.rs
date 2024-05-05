@@ -30,7 +30,7 @@ use chess::{
 
 fn main()
 {
-	dotenv::dotenv().expect("Could not parse variables fromn .env file!");
+	dotenv::dotenv().expect("Could not parse variables from .env file!");
 	env_logger::init();
 
 	let args = Arguments::parse();
