@@ -249,7 +249,7 @@ impl Vec2i
 	pub fn compass_direction(self) -> Direction
 	{
 		let normalized = self.normalized();
-		match (normalized.rank, normalized.file)
+		match (normalized.file, normalized.rank)
 		{
 			(0, 1) => Direction::North,
 			(1, 1) => Direction::Northeast,
@@ -422,5 +422,23 @@ mod test
 	fn out_of_bounds_addition()
 	{
 		let _ = Pos::from_file_rank(7, 7) + Vec2i::new(2, 2);
+	}
+
+	#[test]
+	fn straight_line_test()
+	{
+		assert!(Vec2i::SOUTH_EAST.is_straight_line());
+	}
+
+	#[test]
+	fn offset_test()
+	{
+		let a = Pos::from_index(4);
+		let b = Pos::from_index(13);
+
+		assert_eq!(a.offset_to(b), b.offset_from(a));
+
+		assert_eq!(a.offset_to(b), Vec2i::SOUTH_EAST);
+		assert_eq!(a.offset_from(b), Vec2i::NORTH_WEST);
 	}
 }

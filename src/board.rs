@@ -2,7 +2,10 @@ pub mod moves;
 pub mod pieces;
 mod positioning;
 
-use std::{collections::VecDeque, fmt::Display, fmt::Write};
+use std::{
+	collections::VecDeque,
+	fmt::{Display, Write},
+};
 
 pub use positioning::*;
 
@@ -157,6 +160,61 @@ impl Board
 				black_queenside,
 			},
 		))
+	}
+
+	pub fn fen_string(&self) -> String
+	{
+		let mut fen_string = String::new();
+		{
+			// positionals
+			let mut empty_space_count = 0;
+			for rank in self.squares.chunks(8)
+			{
+				for square in rank
+				{
+					match square
+					{
+						Some(piece) =>
+						{
+							if empty_space_count > 0
+							{
+								let _ = write!(fen_string, "{empty_space_count}");
+								empty_space_count = 0;
+							}
+
+							let _ = write!(fen_string, "{piece}");
+						}
+						None => empty_space_count += 1,
+					}
+				}
+				if empty_space_count > 0
+				{
+					let _ = write!(fen_string, "{empty_space_count}");
+					empty_space_count = 0;
+				}
+				fen_string.push('/');
+			}
+		}
+		fen_string.pop();
+
+		let _ = write!(
+			fen_string,
+			" {} {} ",
+			self.to_move.char(),
+			self.castle_legality
+		);
+		// :(( -morgan 2024-05-05
+		if let Some(en_passant_square) = self.en_passant_target
+		{
+			let _ = write!(fen_string, "{en_passant_square}");
+		}
+		else
+		{
+			fen_string.push('-');
+		}
+		fen_string.push_str(" 0 1");
+
+		fen_string
 	}
 
 	// accessors
@@ -344,19 +402,22 @@ impl Board
 
 		if moving_piece.is_king()
 		{
-			let mut targeted_squares = self
-				.positioned_pieces_of(!moving_piece.color)
-				.flat_map(|piece| self.squares_targeted_by(piece));
-
 			if self.is_move_castle(mov)
 			{
 				let move_direction = mov.offset().normalized();
-				targeted_squares
-					.any(|sq| sq == mov.from || sq == mov.from + move_direction || sq == mov.to)
+				![mov.from, mov.from + move_direction, mov.to]
+					.into_iter()
+					.any(|sq| {
+						self.pieces_targeting(sq, moving_piece.color)
+							.next()
+							.is_some()
+					})
 			}
 			else
 			{
-				targeted_squares.all(|square| mov.to != square)
+				self.pieces_targeting(mov.to, moving_piece.color)
+					.next()
+					.is_none()
 			}
 		}
 		else
@@ -429,38 +490,45 @@ impl Board
 			.unwrap_or_else(|| mov.to - self[mov.from].unwrap().forward_vector())
 	}
 
+	fn pieces_targeting(
+		&self,
+		target_pos: Pos,
+		target_color: Color,
+	) -> impl Iterator<Item = PositionedPiece> + '_
+	{
+		let knight_squares = target_pos.knight_move_squares().filter(move |pos| {
+			self[*pos].is_some_and(|piece| {
+				piece.piece_type == PieceType::Knight && piece.color != target_color
+			})
+		});
+		let king_squares = target_pos.adjoining_squares().filter(move |pos| {
+			self[*pos].is_some_and(|piece| piece.color != target_color && piece.is_king())
+		});
+		let pawn_squares = [
+			target_pos.move_by(Vec2i::EAST + target_color.forward_vector()),
+			target_pos.move_by(Vec2i::WEST + target_color.forward_vector()),
+		]
+		.into_iter()
+		.flatten()
+		.filter(move |pos| {
+			self[*pos].is_some_and(|piece| piece.color != target_color && piece.is_pawn())
+		});
+		let sliding_pieces = self
+			.sliding_pieces_targeting(target_pos)
+			.filter(move |piece| piece.color() != target_color);
+		sliding_pieces.chain(
+			knight_squares
+				.chain(king_squares)
+				.chain(pawn_squares)
+				.map(|pos| PositionedPiece::new(pos, self[pos].unwrap())),
+		)
+	}
+
 	fn pieces_attacking_king(&self, color: Color) -> Vec<PositionedPiece>
 	{
 		let king_pos = self.king_pos(color);
 		self.last_move().map_or_else(
-			|| {
-				let knight_squares = king_pos.knight_move_squares().filter(|pos| {
-					self[*pos].is_some_and(|piece| piece == Piece::new(!color, PieceType::Knight))
-				});
-				let king_squares = king_pos.adjoining_squares().filter(|pos| {
-					self[*pos].is_some_and(|piece| piece.color != color && piece.is_king())
-				});
-				let pawn_squares = [
-					king_pos.move_by(Vec2i::EAST + color.forward_vector()),
-					king_pos.move_by(Vec2i::WEST + color.forward_vector()),
-				]
-				.into_iter()
-				.flatten()
-				.filter(|pos| {
-					self[*pos].is_some_and(|piece| piece.color != color && piece.is_pawn())
-				});
-
-				let sliding_pieces = self.sliding_pieces_targeting(king_pos);
-
-				sliding_pieces
-					.chain(
-						knight_squares
-							.chain(king_squares)
-							.chain(pawn_squares)
-							.map(|pos| PositionedPiece::new(pos, self[pos].unwrap())),
-					)
-					.collect()
-			},
+			|| self.pieces_targeting(king_pos, color).collect(),
 			|last_move| {
 				let direct_attacker = self[last_move.to()].and_then(|attacker| {
 					let positioned_attacker = PositionedPiece::new(last_move.to(), attacker);
@@ -886,7 +954,11 @@ impl Iterator for SlidingRayIter
 #[allow(dead_code)]
 mod test
 {
-	use crate::board::pieces::PositionedPiece;
+	use crate::board::{
+		moves::Move,
+		pieces::{Color, PieceType, PositionedPiece},
+		Vec2i,
+	};
 
 	use super::{pieces::Piece, Board, Direction, Pos, SlidingRay, SlidingRayIter};
 
@@ -949,6 +1021,56 @@ mod test
 	}
 
 	#[test]
+	fn first_piece_ignoring()
+	{
+		let board =
+			Board::from_fen_string("rnbqkbnr/pppp1ppp/8/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR b KQkq - 1 2")
+				.expect("Invalid FEN in test!");
+
+		let mov = Move::new(Pos::from_index(13), Pos::from_index(21));
+		let moving_piece = board[mov.from].unwrap();
+		let king_pos = board.king_pos(Color::Black);
+		let king_to_move_start = king_pos.offset_to(mov.from);
+
+		assert_eq!(mov.to_string(), "f7f6");
+		assert!(king_to_move_start.is_straight_line());
+		assert_eq!(king_to_move_start, Vec2i::SOUTH_EAST);
+
+		let direction = king_to_move_start.normalized().compass_direction();
+		let ray = SlidingRay::new(king_pos, direction);
+		assert_eq!(
+			SlidingRay::new(Pos::from_index(4), Direction::Southeast),
+			ray
+		);
+
+		let reveals_check = king_to_move_start
+			.is_straight_line()
+			.then(|| king_to_move_start.normalized().compass_direction())
+			.map(|direction| SlidingRay::new(king_pos, direction))
+			.is_some_and(|ray| {
+				board
+					.first_piece_ignoring(ray, [Some(mov.from)])
+					.is_some_and(|hit_piece| {
+						hit_piece.can_slide_in_direction(ray.direction)
+							&& hit_piece.color() != moving_piece.color
+					})
+			});
+
+		assert!(reveals_check);
+
+		assert_eq!(
+			board.first_piece_ignoring(
+				SlidingRay::new(Pos::from_index(4), Direction::Southeast),
+				[Some(Pos::from_index(13))],
+			),
+			Some(PositionedPiece::new(
+				Pos::from_index(31),
+				Piece::new(Color::White, PieceType::Queen)
+			))
+		);
+	}
+
+	// #[test]
 	fn move_generation_accuracy()
 	{
 		let mut starting_position_board =

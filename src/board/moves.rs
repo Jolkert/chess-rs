@@ -201,6 +201,30 @@ impl CastleLegality
 		}
 	}
 }
+impl Display for CastleLegality
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		if !self.white_kingside
+			&& !self.white_queenside
+			&& !self.black_kingside
+			&& !self.black_queenside
+		{
+			write!(f, "-")
+		}
+		else
+		{
+			write!(
+				f,
+				"{}{}{}{}",
+				if self.white_kingside { "K" } else { "" },
+				if self.white_queenside { "Q" } else { "" },
+				if self.black_kingside { "k" } else { "" },
+				if self.black_queenside { "q" } else { "" }
+			)
+		}
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MovementDirection {}

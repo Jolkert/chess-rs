@@ -73,7 +73,8 @@ struct Application
 	last_interacted_pos: Option<Pos>,
 	board: Board,
 	dragging_index: Option<usize>,
-	fen_string: String,
+	loadable_fen: String,
+	current_fen: String,
 	played_moves: VecDeque<PlayedMove>,
 	side_in_check: Option<Color>,
 	engine: Engine,
@@ -90,6 +91,7 @@ impl Application
 	{
 		let played_move = self.board.make_move(mov);
 		log::info!("{} plays {}", played_move.piece().color, played_move);
+		self.current_fen = self.board.fen_string();
 		self.side_in_check =
 			(played_move.check_state() != CheckState::None).then(|| !played_move.piece().color);
 		self.played_moves.push_front(played_move);
@@ -105,7 +107,8 @@ impl Default for Application
 			board: Board::default(),
 			dragging_index: None,
 			last_interacted_pos: None,
-			fen_string: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
+			current_fen: String::new(),
+			loadable_fen: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
 
 			played_moves: VecDeque::new(),
 			side_in_check: None,
@@ -122,19 +125,25 @@ impl eframe::App for Application
 			ui.horizontal(|ui| {
 				// left panel
 				ui.vertical(|ui| {
+					ui.set_width(300.0);
 					let label = ui.label("FEN String: ");
-					ui.text_edit_singleline(&mut self.fen_string)
+					ui.text_edit_singleline(&mut self.loadable_fen)
 						.labelled_by(label.id);
 
 					let load_fen_button = ui.button("Load FEN");
 					if load_fen_button.clicked()
 					{
-						self.board =
-							Board::from_fen_string(&self.fen_string).expect("Invalid FEN string!");
+						self.board = Board::from_fen_string(&self.loadable_fen)
+							.expect("Invalid FEN string!");
+						self.current_fen = self.board.fen_string();
 					}
 
 					ui.heading("Game information:");
 					ui.label(format!("{} to move", self.board.to_move()));
+					if !self.current_fen.is_empty()
+					{
+						ui.label(format!("Current Position:\n{}", self.current_fen));
+					}
 					if let Some(last_move) = self.last_move()
 					{
 						ui.label(format!("Last move: {last_move}"));
@@ -152,11 +161,6 @@ impl eframe::App for Application
 					{
 						ui.label(format!("En passant target square: {en_passant}"));
 					}
-
-					// ui.label(format!(
-					// 	"Castle information:\n {:#?}",
-					// 	self.board.castle_legality()
-					// ));
 
 					ui.heading("Last interaction:");
 					if let Some(last_pos) = self.last_interacted_pos

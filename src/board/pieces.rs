@@ -163,6 +163,13 @@ impl PositionedPiece
 			.then(|| SlidingRay::new(self.pos(), direction))
 	}
 }
+impl Display for PositionedPiece
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		write!(f, "{}{}", self.1, self.0)
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PieceType
@@ -208,6 +215,15 @@ impl Color
 		{
 			Self::White => Vec2i::new(0, 1),
 			Self::Black => Vec2i::new(0, -1),
+		}
+	}
+
+	pub fn char(self) -> char
+	{
+		match self
+		{
+			Self::White => 'w',
+			Self::Black => 'b',
 		}
 	}
 }
@@ -295,5 +311,41 @@ impl SlidingAxis
 	{
 		self.allowed_directions()
 			.map(move |dir| SlidingRay::new(pos, *dir))
+	}
+}
+
+#[cfg(test)]
+mod test
+{
+	use crate::board::Direction;
+
+	use super::{Color, Piece, PieceType, SlidingAxis};
+
+	#[test]
+	fn piece_slide_ability_check()
+	{
+		let queen = Piece::new(Color::White, PieceType::Queen);
+		let rook = Piece::new(Color::White, PieceType::Rook);
+		let bishop = Piece::new(Color::White, PieceType::Bishop);
+
+		queen.can_slide_in_direction(Direction::Southeast);
+
+		SlidingAxis::Both
+			.allowed_directions()
+			.all(|dir| queen.can_slide_in_direction(*dir));
+
+		SlidingAxis::Diagonal
+			.allowed_directions()
+			.all(|dir| bishop.can_slide_in_direction(*dir));
+		SlidingAxis::Diagonal
+			.allowed_directions()
+			.all(|dir| !rook.can_slide_in_direction(*dir));
+
+		SlidingAxis::Orthogonal
+			.allowed_directions()
+			.all(|dir| rook.can_slide_in_direction(*dir));
+		SlidingAxis::Orthogonal
+			.allowed_directions()
+			.all(|dir| !bishop.can_slide_in_direction(*dir));
 	}
 }
