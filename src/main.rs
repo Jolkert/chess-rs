@@ -37,12 +37,9 @@ fn main()
 	match args.command.unwrap_or(Command::Play)
 	{
 		Command::Play => start_gui_game().unwrap_or_else(|err| panic!("{err}")),
-		Command::Perft {
-			depth,
-			starting_fen,
-		} =>
+		Command::Perft { depth } =>
 		{
-			let mut board = Board::from_fen_string(&starting_fen).expect("Invalid FEN string!");
+			let mut board = Board::from_fen_string(&args.fen).expect("Invalid FEN string!");
 			let perft_results = board.perft(depth);
 			println!("{perft_results}");
 		}
@@ -418,22 +415,23 @@ struct Arguments
 {
 	#[command(subcommand)]
 	command: Option<Command>,
+
+	#[arg(
+		short,
+		long,
+		default_value = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+	)]
+	fen: String,
 }
 
 #[derive(Subcommand, Debug)]
+#[command(about, long_about = None)]
 enum Command
 {
 	Play,
 	Perft
 	{
 		depth: u32,
-
-		#[arg(
-			short,
-			long,
-			default_value = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-		)]
-		starting_fen: String,
 	},
 }
 impl Default for Command
