@@ -438,11 +438,14 @@ impl Board
 					.then(|| king_to_move_start.normalized().compass_direction())
 					.map(|direction| SlidingRay::new(king_pos, direction))
 					.is_some_and(|ray| {
-						self.first_piece_ignoring(ray, [Some(mov.from), en_passant_vacant_square])
-							.is_some_and(|hit_piece| {
-								hit_piece.can_slide_in_direction(ray.direction)
-									&& hit_piece.color() != moving_piece.color
-							})
+						self.first_piece_ignoring(
+							ray,
+							[Some(mov.from), Some(mov.to), en_passant_vacant_square],
+						)
+						.is_some_and(|hit_piece| {
+							hit_piece.can_slide_in_direction(ray.direction)
+								&& hit_piece.color() != moving_piece.color
+						})
 					});
 
 				all_attackers.first().map_or(!reveals_check, |attacker| {
