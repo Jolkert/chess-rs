@@ -14,7 +14,7 @@ use self::{
 };
 
 // TODO: check
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Board
 {
 	squares: [Option<Piece>; 64],
@@ -87,7 +87,7 @@ impl Board
 			castle_legality,
 			..Default::default()
 		};
-		board.regen_legal_moves();
+		board.recalculate_legal_moves();
 		board
 	}
 
@@ -159,12 +159,12 @@ impl Board
 		))
 	}
 
+	// accessors
 	pub fn to_move(&self) -> Color
 	{
 		self.to_move
 	}
 
-	// accessors
 	pub fn pieces(&self) -> impl Iterator<Item = &Piece>
 	{
 		self.squares.iter().flatten()
@@ -207,365 +207,14 @@ impl Board
 		&self.legal_moves
 	}
 
-	fn regen_legal_moves(&mut self)
+	pub fn generate_legal_moves(&mut self) -> impl Iterator<Item = Move> + '_
 	{
-		self.legal_moves = self.gen_legal_moves();
+		self.pseudo_legal_moves_color(self.to_move)
+			.filter(|mov| self.is_move_legal(*mov))
 	}
 
-	pub fn gen_legal_moves(&mut self) -> Vec<Move>
-	{
-		let mut pseudo_legal_moves = self.pseudo_legal_moves_for_color(self.to_move);
-		pseudo_legal_moves.retain(|mov| self.is_move_legal(*mov));
-		pseudo_legal_moves
-	}
-
-	pub fn is_move_castle(&self, mov: Move) -> bool
-	{
-		mov.offset().file.abs() > 1 && self[mov.from].is_some_and(Piece::is_king)
-	}
-
-	pub fn is_move_legal(&self, mov: Move) -> bool
-	{
-		let Some(moving_piece) = self[mov.from]
-		else
-		{
-			return false;
-		};
-
-		if moving_piece.is_king()
-		{
-			let mut targeted_squares = self
-				.positioned_pieces_of(!moving_piece.color)
-				.flat_map(|piece| self.piece_targeted_squares(piece));
-
-			if self.is_move_castle(mov)
-			{
-				let move_direction = mov.offset().normalized();
-				targeted_squares
-					.any(|sq| sq == mov.from || sq == mov.from + move_direction || sq == mov.to)
-			}
-			else
-			{
-				targeted_squares.all(|square| mov.to != square)
-			}
-		}
-		else
-		{
-			let king_pos = self.king_pos_of(moving_piece.color);
-			let all_attackers = self.pieces_attacking_king(moving_piece.color);
-
-			all_attackers.len() < 2 && {
-				let en_passant_vacant_square = self
-					.is_move_en_passant(mov)
-					.then(|| mov.from - moving_piece.forward_vector());
-
-				let king_to_move_start = king_pos.offset_to(mov.from);
-
-				// god this hurts my eyes -morgan 2024-05-04
-				let reveals_check = king_to_move_start
-					.is_straight_line()
-					.then(|| king_to_move_start.normalized().compass_direction())
-					.map(|direction| SlidingRay::new(king_pos, direction))
-					.is_some_and(|ray| {
-						self.first_hit_ignoring(ray, [Some(mov.from), en_passant_vacant_square])
-							.is_some_and(|hit_piece| {
-								hit_piece.can_slide_in_direction(ray.direction)
-									&& hit_piece.color() != moving_piece.color
-							})
-					});
-
-				all_attackers.first().map_or(!reveals_check, |attacker| {
-					!reveals_check
-						&& (self.capture_square(mov) == attacker.pos() || {
-							let check_ray = attacker.sliding_ray(
-								attacker
-									.pos()
-									.offset_to(king_pos)
-									.normalized()
-									.compass_direction(),
-							);
-
-							check_ray.map_or(false, |ray| {
-								ray.first_hit(mov.to, king_pos)
-									.map_or(true, |hit_pos| hit_pos != king_pos)
-							})
-						})
-				})
-			}
-		}
-	}
-
-	fn is_move_en_passant(&self, mov: Move) -> bool
-	{
-		self[mov.from].is_some_and(|piece| {
-			piece.is_pawn()
-				&& mov.to.file() != mov.from.file()
-				&& self
-					.en_passant_target
-					.is_some_and(|ep_square| ep_square == mov.to)
-		})
-	}
-
-	/// Doesn't check that move is a capture, simply assumes it is
-	fn capture_square(&self, mov: Move) -> Pos
-	{
-		(!self.is_move_en_passant(mov))
-			.then_some(mov.to)
-			.unwrap_or_else(|| mov.to - self[mov.from].unwrap().forward_vector())
-	}
-
-	fn pieces_attacking_king(&self, color: Color) -> Vec<PositionedPiece>
-	{
-		let king_pos = self.king_pos_of(color);
-		self.last_move().map_or_else(
-			|| {
-				let knight_squares = king_pos.knight_move_squares().filter(|pos| {
-					self[*pos].is_some_and(|piece| piece == Piece::new(!color, PieceType::Knight))
-				});
-				let king_squares = king_pos.adjoining_squares().filter(|pos| {
-					self[*pos].is_some_and(|piece| piece.color != color && piece.is_king())
-				});
-				let pawn_squares = [
-					king_pos.move_by(Vec2i::EAST + color.forward_vector()),
-					king_pos.move_by(Vec2i::WEST + color.forward_vector()),
-				]
-				.into_iter()
-				.flatten()
-				.filter(|pos| {
-					self[*pos].is_some_and(|piece| piece.color != color && piece.is_pawn())
-				});
-
-				let sliding_pieces = self.sliding_pieces_targeting(king_pos);
-
-				sliding_pieces
-					.chain(
-						knight_squares
-							.chain(king_squares)
-							.chain(pawn_squares)
-							.map(|pos| PositionedPiece::new(pos, self[pos].unwrap())),
-					)
-					.collect()
-			},
-			|last_move| {
-				let direct_attacker = self[last_move.to()].and_then(|attacker| {
-					let positioned_attacker = PositionedPiece::new(last_move.to(), attacker);
-					self.piece_targeted_squares(positioned_attacker)
-						.contains(&king_pos)
-						.then_some(positioned_attacker)
-				});
-
-				let discovered_attackers = last_move.revealed_squares().filter_map(|square| {
-					let offset_from_king = square.offset_from(king_pos);
-					offset_from_king
-						.is_straight_line()
-						.then(|| {
-							let direction_from_king =
-								offset_from_king.normalized().compass_direction();
-							let potential_attacker =
-								self.first_hit(SlidingRay::new(king_pos, direction_from_king));
-
-							potential_attacker.and_then(|piece| {
-								piece
-									.can_slide_in_direction(direction_from_king)
-									.then_some(piece)
-							})
-						})
-						.flatten()
-				});
-
-				direct_attacker
-					.iter()
-					.copied()
-					.chain(discovered_attackers)
-					.collect()
-			},
-		)
-	}
-
-	fn sliding_pieces_targeting(&self, from: Pos) -> impl Iterator<Item = PositionedPiece> + '_
-	{
-		SlidingAxis::Both
-			.allowed_directions()
-			.filter_map(move |direction| {
-				self.first_hit(SlidingRay::new(from, *direction))
-					.and_then(|piece| piece.can_slide_in_direction(*direction).then_some(piece))
-			})
-	}
-
-	fn first_hit(&self, ray: SlidingRay) -> Option<PositionedPiece>
-	{
-		ray.iter()
-			.find_map(|pos| self[pos].map(|piece| PositionedPiece::new(pos, piece)))
-	}
-
-	fn first_hit_ignoring<const N: usize>(
-		&self,
-		ray: SlidingRay,
-		ignore: [Option<Pos>; N],
-	) -> Option<PositionedPiece>
-	{
-		ray.iter().find_map(|pos| {
-			self[pos].and_then(|piece| {
-				(!ignore.iter().flatten().any(|ignored| pos == *ignored))
-					.then(|| PositionedPiece::new(pos, piece))
-			})
-		})
-	}
-
-	fn ray_squares_until_piece(&self, ray: SlidingRay) -> Vec<Pos>
-	{
-		// pls let me take the boundary element with take_while i beg you -morgan 2024-05-03
-		let mut squares = Vec::new();
-		for pos in ray.iter()
-		{
-			squares.push(pos);
-			if self[pos].is_some()
-			{
-				break;
-			}
-		}
-
-		squares
-	}
-
-	pub fn piece_targeted_squares(&self, piece: PositionedPiece) -> Vec<Pos>
-	{
-		let PositionedPiece(pos, piece) = piece;
-		match piece.piece_type
-		{
-			PieceType::Pawn =>
-			{
-				let forward = piece.forward_vector();
-				Vec::from([
-					pos.checked_move(forward + Vec2i::EAST),
-					pos.checked_move(forward + Vec2i::WEST),
-				])
-			}
-			PieceType::Knight => Vec::from([
-				pos.checked_move(Vec2i::new(2, 1)),
-				pos.checked_move(Vec2i::new(2, -1)),
-				pos.checked_move(Vec2i::new(-2, 1)),
-				pos.checked_move(Vec2i::new(-2, -1)),
-				pos.checked_move(Vec2i::new(1, 2)),
-				pos.checked_move(Vec2i::new(1, -2)),
-				pos.checked_move(Vec2i::new(-1, 2)),
-				pos.checked_move(Vec2i::new(-1, -2)),
-			]),
-			PieceType::King => Vec::from([
-				pos.checked_move(Vec2i::WEST),
-				pos.checked_move(Vec2i::NORTH),
-				pos.checked_move(Vec2i::EAST),
-				pos.checked_move(Vec2i::SOUTH),
-				pos.checked_move(Vec2i::new(1, 1)),
-				pos.checked_move(Vec2i::new(1, -1)),
-				pos.checked_move(Vec2i::new(-1, 1)),
-				pos.checked_move(Vec2i::new(-1, -1)),
-				pos.checked_move(Vec2i::new(2, 0)),
-				pos.checked_move(Vec2i::new(-2, 0)),
-			]),
-
-			_ => piece
-				.sliding_axis()
-				.expect("Attempted to get sliding axis of non-sliding piece!")
-				.allowed_directions()
-				.flat_map(|direction| {
-					self.ray_squares_until_piece(SlidingRay::new(pos, *direction))
-						.into_iter()
-						.map(Some)
-				})
-				.collect::<Vec<_>>(),
-		}
-		.into_iter()
-		.flatten()
-		.collect()
-	}
-
-	pub fn pseudo_legal_moves_for_color(&self, color: Color) -> Vec<Move>
-	{
-		// do i hate this? -morgan 2024-04-27
-		self.squares
-			.iter()
-			.enumerate()
-			.filter_map(|(i, square)| {
-				square.and_then(|piece| {
-					(piece.color == color)
-						.then_some(PositionedPiece::new(Pos::from_index(i), piece))
-				})
-			})
-			.flat_map(|piece| self.pseudo_legal_moves_for_piece(piece))
-			.collect::<Vec<_>>()
-	}
-
-	pub fn pseudo_legal_moves_for_piece(&self, piece: PositionedPiece) -> Vec<Move>
-	{
-		let PositionedPiece(pos, piece) = piece;
-		match piece.piece_type
-		{
-			PieceType::Pawn =>
-			{
-				let forward = piece.forward_vector();
-				Vec::from([
-					pos.checked_move(forward),
-					pos.checked_move(forward + Vec2i::EAST),
-					pos.checked_move(forward + Vec2i::WEST),
-					((pos.rank() == 1 || pos.rank() == 6)
-						&& pos
-							.checked_move(forward)
-							.is_some_and(|sq| self[sq].is_none()))
-					.then(|| pos.checked_move(2 * forward))
-					.flatten(),
-				])
-			}
-			PieceType::Knight => Vec::from([
-				pos.checked_move(Vec2i::new(2, 1)),
-				pos.checked_move(Vec2i::new(2, -1)),
-				pos.checked_move(Vec2i::new(-2, 1)),
-				pos.checked_move(Vec2i::new(-2, -1)),
-				pos.checked_move(Vec2i::new(1, 2)),
-				pos.checked_move(Vec2i::new(1, -2)),
-				pos.checked_move(Vec2i::new(-1, 2)),
-				pos.checked_move(Vec2i::new(-1, -2)),
-			]),
-			PieceType::King => Vec::from([
-				pos.checked_move(Vec2i::WEST),
-				pos.checked_move(Vec2i::NORTH),
-				pos.checked_move(Vec2i::EAST),
-				pos.checked_move(Vec2i::SOUTH),
-				pos.checked_move(Vec2i::new(1, 1)),
-				pos.checked_move(Vec2i::new(1, -1)),
-				pos.checked_move(Vec2i::new(-1, 1)),
-				pos.checked_move(Vec2i::new(-1, -1)),
-				pos.checked_move(Vec2i::new(2, 0)),
-				pos.checked_move(Vec2i::new(-2, 0)),
-			]),
-			_ => self.sliding_piece_targets(
-				pos,
-				piece
-					.sliding_axis()
-					.expect("Attempted to get sliding axis from non-sliding piece!"),
-			),
-		}
-		// is this a good idea? -morgan 2024-04-27
-		.into_iter()
-		.flatten()
-		.map(|target_pos| Move::new(pos, target_pos))
-		.filter(|mov| self.can_piece_play(piece, *mov))
-		.collect()
-	}
-
+	// move making
 	pub fn make_move(&mut self, mov: Move) -> PlayedMove
-	{
-		let result = self.make_move_no_regen(mov);
-		self.regen_legal_moves();
-		result
-	}
-	pub fn unmake_move(&mut self, mov: &PlayedMove)
-	{
-		self.unmake_move_no_regen(mov);
-		self.regen_legal_moves();
-	}
-
-	fn make_move_no_regen(&mut self, mov: Move) -> PlayedMove
 	{
 		let piece = self[mov.from].expect("Tried to make a move from an empty square!");
 		let previous_castle_legality = self.castle_legality;
@@ -646,10 +295,11 @@ impl Board
 		};
 
 		self.previous_moves.push_front(played.clone());
+
+		self.recalculate_legal_moves();
 		played
 	}
-
-	fn unmake_move_no_regen(&mut self, mov: &PlayedMove)
+	pub fn unmake_move(&mut self, mov: &PlayedMove)
 	{
 		let _ = self[mov.from()].insert(mov.piece);
 		self[mov.to()] = None;
@@ -674,29 +324,351 @@ impl Board
 		self.to_move = mov.piece.color;
 		self.castle_legality = mov.previous_castle_legality;
 		self.en_passant_target = mov.previous_en_passant;
+
+		self.recalculate_legal_moves();
 	}
 
-	fn sliding_piece_targets(&self, pos: Pos, axis: SlidingAxis) -> Vec<Option<Pos>>
+	fn recalculate_legal_moves(&mut self)
 	{
-		let mut targets = Vec::new();
+		self.legal_moves = self.generate_legal_moves().collect();
+	}
 
-		for ray in axis
-			.allowed_directions()
-			.map(|dir| SlidingRayIter::new(pos, *dir))
+	// move generation
+	pub fn is_move_legal(&self, mov: Move) -> bool
+	{
+		let Some(moving_piece) = self[mov.from]
+		else
 		{
-			for square in ray
+			return false;
+		};
+
+		if moving_piece.is_king()
+		{
+			let mut targeted_squares = self
+				.positioned_pieces_of(!moving_piece.color)
+				.flat_map(|piece| self.squares_targeted_by(piece));
+
+			if self.is_move_castle(mov)
 			{
-				targets.push(Some(square));
-				if self[square].is_some()
-				{
-					break;
-				}
+				let move_direction = mov.offset().normalized();
+				targeted_squares
+					.any(|sq| sq == mov.from || sq == mov.from + move_direction || sq == mov.to)
+			}
+			else
+			{
+				targeted_squares.all(|square| mov.to != square)
 			}
 		}
-		targets
+		else
+		{
+			let king_pos = self.king_pos(moving_piece.color);
+			let all_attackers = self.pieces_attacking_king(moving_piece.color);
+
+			all_attackers.len() < 2 && {
+				let en_passant_vacant_square = self
+					.is_move_en_passant(mov)
+					.then(|| mov.from - moving_piece.forward_vector());
+
+				let king_to_move_start = king_pos.offset_to(mov.from);
+
+				// god this hurts my eyes -morgan 2024-05-04
+				let reveals_check = king_to_move_start
+					.is_straight_line()
+					.then(|| king_to_move_start.normalized().compass_direction())
+					.map(|direction| SlidingRay::new(king_pos, direction))
+					.is_some_and(|ray| {
+						self.first_piece_ignoring(ray, [Some(mov.from), en_passant_vacant_square])
+							.is_some_and(|hit_piece| {
+								hit_piece.can_slide_in_direction(ray.direction)
+									&& hit_piece.color() != moving_piece.color
+							})
+					});
+
+				all_attackers.first().map_or(!reveals_check, |attacker| {
+					!reveals_check
+						&& (self.capture_square(mov) == attacker.pos() || {
+							let check_ray = attacker.sliding_ray(
+								attacker
+									.pos()
+									.offset_to(king_pos)
+									.normalized()
+									.compass_direction(),
+							);
+
+							check_ray.map_or(false, |ray| {
+								ray.first_hit(mov.to, king_pos)
+									.map_or(true, |hit_pos| hit_pos != king_pos)
+							})
+						})
+				})
+			}
+		}
 	}
 
-	fn can_piece_play(&self, piece: Piece, mov: Move) -> bool
+	pub fn is_move_castle(&self, mov: Move) -> bool
+	{
+		mov.offset().file.abs() > 1 && self[mov.from].is_some_and(Piece::is_king)
+	}
+
+	fn is_move_en_passant(&self, mov: Move) -> bool
+	{
+		self[mov.from].is_some_and(|piece| {
+			piece.is_pawn()
+				&& mov.to.file() != mov.from.file()
+				&& self
+					.en_passant_target
+					.is_some_and(|ep_square| ep_square == mov.to)
+		})
+	}
+
+	/// Doesn't check that move is a capture, simply assumes it is
+	fn capture_square(&self, mov: Move) -> Pos
+	{
+		(!self.is_move_en_passant(mov))
+			.then_some(mov.to)
+			.unwrap_or_else(|| mov.to - self[mov.from].unwrap().forward_vector())
+	}
+
+	fn pieces_attacking_king(&self, color: Color) -> Vec<PositionedPiece>
+	{
+		let king_pos = self.king_pos(color);
+		self.last_move().map_or_else(
+			|| {
+				let knight_squares = king_pos.knight_move_squares().filter(|pos| {
+					self[*pos].is_some_and(|piece| piece == Piece::new(!color, PieceType::Knight))
+				});
+				let king_squares = king_pos.adjoining_squares().filter(|pos| {
+					self[*pos].is_some_and(|piece| piece.color != color && piece.is_king())
+				});
+				let pawn_squares = [
+					king_pos.move_by(Vec2i::EAST + color.forward_vector()),
+					king_pos.move_by(Vec2i::WEST + color.forward_vector()),
+				]
+				.into_iter()
+				.flatten()
+				.filter(|pos| {
+					self[*pos].is_some_and(|piece| piece.color != color && piece.is_pawn())
+				});
+
+				let sliding_pieces = self.sliding_pieces_targeting(king_pos);
+
+				sliding_pieces
+					.chain(
+						knight_squares
+							.chain(king_squares)
+							.chain(pawn_squares)
+							.map(|pos| PositionedPiece::new(pos, self[pos].unwrap())),
+					)
+					.collect()
+			},
+			|last_move| {
+				let direct_attacker = self[last_move.to()].and_then(|attacker| {
+					let positioned_attacker = PositionedPiece::new(last_move.to(), attacker);
+					self.squares_targeted_by(positioned_attacker)
+						.any(|pos| pos == king_pos)
+						.then_some(positioned_attacker)
+				});
+
+				let discovered_attackers = last_move.revealed_squares().filter_map(|square| {
+					let offset_from_king = square.offset_from(king_pos);
+					offset_from_king
+						.is_straight_line()
+						.then(|| {
+							let direction_from_king =
+								offset_from_king.normalized().compass_direction();
+							let potential_attacker =
+								self.first_piece_in(SlidingRay::new(king_pos, direction_from_king));
+
+							potential_attacker.and_then(|piece| {
+								piece
+									.can_slide_in_direction(direction_from_king)
+									.then_some(piece)
+							})
+						})
+						.flatten()
+				});
+
+				direct_attacker
+					.iter()
+					.copied()
+					.chain(discovered_attackers)
+					.collect()
+			},
+		)
+	}
+
+	fn sliding_pieces_targeting(&self, from: Pos) -> impl Iterator<Item = PositionedPiece> + '_
+	{
+		SlidingAxis::Both
+			.allowed_directions()
+			.filter_map(move |direction| {
+				self.first_piece_in(SlidingRay::new(from, *direction))
+					.and_then(|piece| piece.can_slide_in_direction(*direction).then_some(piece))
+			})
+	}
+
+	fn first_piece_in(&self, ray: SlidingRay) -> Option<PositionedPiece>
+	{
+		ray.iter()
+			.find_map(|pos| self[pos].map(|piece| PositionedPiece::new(pos, piece)))
+	}
+
+	fn first_piece_ignoring<const N: usize>(
+		&self,
+		ray: SlidingRay,
+		ignore: [Option<Pos>; N],
+	) -> Option<PositionedPiece>
+	{
+		ray.iter().find_map(|pos| {
+			self[pos].and_then(|piece| {
+				(!ignore.iter().flatten().any(|ignored| pos == *ignored))
+					.then(|| PositionedPiece::new(pos, piece))
+			})
+		})
+	}
+
+	fn targetable_squares_in(&self, ray: SlidingRay) -> Vec<Pos>
+	{
+		// pls let me take the boundary element with take_while i beg you -morgan 2024-05-03
+		let mut squares = Vec::new();
+		for pos in ray.iter()
+		{
+			squares.push(pos);
+			if self[pos].is_some()
+			{
+				break;
+			}
+		}
+
+		squares
+	}
+
+	pub fn squares_targeted_by(&self, piece: PositionedPiece) -> impl Iterator<Item = Pos>
+	{
+		let PositionedPiece(pos, piece) = piece;
+		match piece.piece_type
+		{
+			PieceType::Pawn =>
+			{
+				let forward = piece.forward_vector();
+				Vec::from([
+					pos.checked_move(forward + Vec2i::EAST),
+					pos.checked_move(forward + Vec2i::WEST),
+				])
+			}
+			PieceType::Knight => Vec::from([
+				pos.checked_move(Vec2i::new(2, 1)),
+				pos.checked_move(Vec2i::new(2, -1)),
+				pos.checked_move(Vec2i::new(-2, 1)),
+				pos.checked_move(Vec2i::new(-2, -1)),
+				pos.checked_move(Vec2i::new(1, 2)),
+				pos.checked_move(Vec2i::new(1, -2)),
+				pos.checked_move(Vec2i::new(-1, 2)),
+				pos.checked_move(Vec2i::new(-1, -2)),
+			]),
+			PieceType::King => Vec::from([
+				pos.checked_move(Vec2i::WEST),
+				pos.checked_move(Vec2i::NORTH),
+				pos.checked_move(Vec2i::EAST),
+				pos.checked_move(Vec2i::SOUTH),
+				pos.checked_move(Vec2i::new(1, 1)),
+				pos.checked_move(Vec2i::new(1, -1)),
+				pos.checked_move(Vec2i::new(-1, 1)),
+				pos.checked_move(Vec2i::new(-1, -1)),
+				pos.checked_move(Vec2i::new(2, 0)),
+				pos.checked_move(Vec2i::new(-2, 0)),
+			]),
+
+			_ => piece
+				.sliding_axis()
+				.expect("Attempted to get sliding axis of non-sliding piece!")
+				.allowed_directions()
+				.flat_map(|direction| {
+					self.targetable_squares_in(SlidingRay::new(pos, *direction))
+						.into_iter()
+						.map(Some)
+				})
+				.collect::<Vec<_>>(),
+		}
+		.into_iter()
+		.flatten()
+	}
+
+	pub fn pseudo_legal_moves_color(&self, color: Color) -> impl Iterator<Item = Move> + '_
+	{
+		// do i hate this? -morgan 2024-04-27
+		self.squares
+			.iter()
+			.enumerate()
+			.filter_map(move |(i, square)| {
+				square.and_then(|piece| {
+					(piece.color == color)
+						.then_some(PositionedPiece::new(Pos::from_index(i), piece))
+				})
+			})
+			.flat_map(|piece| self.pseudo_legal_moves_piece(piece))
+	}
+
+	pub fn pseudo_legal_moves_piece(
+		&self,
+		piece: PositionedPiece,
+	) -> impl Iterator<Item = Move> + '_
+	{
+		let PositionedPiece(pos, piece) = piece;
+		match piece.piece_type
+		{
+			PieceType::Pawn =>
+			{
+				let forward = piece.forward_vector();
+				Vec::from([
+					pos.checked_move(forward),
+					pos.checked_move(forward + Vec2i::EAST),
+					pos.checked_move(forward + Vec2i::WEST),
+					((pos.rank() == 1 || pos.rank() == 6)
+						&& pos
+							.checked_move(forward)
+							.is_some_and(|sq| self[sq].is_none()))
+					.then(|| pos.checked_move(2 * forward))
+					.flatten(),
+				])
+			}
+			PieceType::Knight => Vec::from([
+				pos.checked_move(Vec2i::new(2, 1)),
+				pos.checked_move(Vec2i::new(2, -1)),
+				pos.checked_move(Vec2i::new(-2, 1)),
+				pos.checked_move(Vec2i::new(-2, -1)),
+				pos.checked_move(Vec2i::new(1, 2)),
+				pos.checked_move(Vec2i::new(1, -2)),
+				pos.checked_move(Vec2i::new(-1, 2)),
+				pos.checked_move(Vec2i::new(-1, -2)),
+			]),
+			PieceType::King => Vec::from([
+				pos.checked_move(Vec2i::WEST),
+				pos.checked_move(Vec2i::NORTH),
+				pos.checked_move(Vec2i::EAST),
+				pos.checked_move(Vec2i::SOUTH),
+				pos.checked_move(Vec2i::new(1, 1)),
+				pos.checked_move(Vec2i::new(1, -1)),
+				pos.checked_move(Vec2i::new(-1, 1)),
+				pos.checked_move(Vec2i::new(-1, -1)),
+				pos.checked_move(Vec2i::new(2, 0)),
+				pos.checked_move(Vec2i::new(-2, 0)),
+			]),
+			_ => self.sliding_piece_targets(
+				pos,
+				piece
+					.sliding_axis()
+					.expect("Attempted to get sliding axis from non-sliding piece!"),
+			),
+		}
+		// is this a good idea? -morgan 2024-04-27
+		.into_iter()
+		.flatten()
+		.map(move |target_pos| Move::new(pos, target_pos))
+		.filter(move |mov| self.is_move_unblocked(piece, *mov))
+	}
+
+	fn is_move_unblocked(&self, piece: Piece, mov: Move) -> bool
 	{
 		let can_move_to = !piece.is_pawn() || mov.from.file() == mov.to.file();
 		let can_capture = !piece.is_pawn() || mov.from.file() != mov.to.file();
@@ -731,8 +703,7 @@ impl Board
 				&& self[rook_start_pos].is_some_and(|rook| {
 					rook.piece_type == PieceType::Rook
 						&& side_allows_castles && self
-						.pseudo_legal_moves_for_piece(PositionedPiece::new(rook_start_pos, rook))
-						.iter()
+						.pseudo_legal_moves_piece(PositionedPiece::new(rook_start_pos, rook))
 						.any(|it| it.to == mov.from + move_direction)
 				});
 			result
@@ -741,7 +712,27 @@ impl Board
 		move_allowed || capture_allowed || castle_allowed
 	}
 
-	fn king_pos_of(&self, color: Color) -> Pos
+	fn sliding_piece_targets(&self, pos: Pos, axis: SlidingAxis) -> Vec<Option<Pos>>
+	{
+		let mut targets = Vec::new();
+
+		for ray in axis
+			.allowed_directions()
+			.map(|dir| SlidingRayIter::new(pos, *dir))
+		{
+			for square in ray
+			{
+				targets.push(Some(square));
+				if self[square].is_some()
+				{
+					break;
+				}
+			}
+		}
+		targets
+	}
+
+	fn king_pos(&self, color: Color) -> Pos
 	{
 		self.squares
 			.iter()
@@ -749,6 +740,7 @@ impl Board
 			.map_or_else(|| panic!("Could not find {color} king!"), Pos::from_index)
 	}
 
+	// perft
 	pub fn perft(&mut self, depth: u32) -> PerftResults
 	{
 		let mut per_move = Vec::new();
@@ -930,10 +922,12 @@ mod test
 		let board = Board::from_fen_string("8/1p2k3/8/3r4/8/7P/6B1/3K4 w - - 0 1")
 			.expect("Invalid FEN given to test!");
 
-		let mut targets = board.piece_targeted_squares(PositionedPiece::new(
-			Pos::from_file_rank(6, 1),
-			Piece::from_char('B').expect("Invalid piece character!"),
-		));
+		let mut targets = board
+			.squares_targeted_by(PositionedPiece::new(
+				Pos::from_file_rank(6, 1),
+				Piece::from_char('B').expect("Invalid piece character!"),
+			))
+			.collect::<Vec<_>>();
 
 		targets.sort_by_key(|a| a.index());
 		assert_eq!(

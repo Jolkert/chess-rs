@@ -368,7 +368,7 @@ impl eframe::App for Application
 				// interaction
 				if self.board.to_move() == Color::Black
 				{
-					let bot_move = self.engine.generate_move(&mut self.board);
+					let bot_move = self.engine.generate_move(&self.board);
 					if self.board.legal_moves().contains(&bot_move)
 					{
 						self.play_move(bot_move);
