@@ -357,33 +357,35 @@ impl Board
 		self.recalculate_legal_moves();
 		played
 	}
-	pub fn unmake_move(&mut self, mov: &PlayedMove)
+	pub fn unmake_move(&mut self) -> Option<PlayedMove>
 	{
-		let _ = self[mov.from()].insert(mov.piece);
-		self[mov.to()] = None;
-		if let Some(capture) = mov.capture
+		let last_move = self.previous_moves.pop_front()?;
+		let _ = self[last_move.from()].insert(last_move.piece);
+		self[last_move.to()] = None;
+		if let Some(capture) = last_move.capture
 		{
 			let _ = self[capture.pos].insert(capture.piece);
 		}
 
-		if let Some(castle_state) = mov.castle_state
+		if let Some(castle_state) = last_move.castle_state
 		{
 			let rook_start_pos = match castle_state
 			{
-				CastleSide::Kingside => mov.to().to_right_edge(),
-				CastleSide::Queenside => mov.to().to_left_edge(),
+				CastleSide::Kingside => last_move.to().to_right_edge(),
+				CastleSide::Queenside => last_move.to().to_left_edge(),
 			};
 
-			let _ = self[rook_start_pos].insert(Piece::new(mov.piece.color, PieceType::Rook));
-			let rook_pos_after_castle = mov.from() + castle_state.direction();
+			let _ = self[rook_start_pos].insert(Piece::new(last_move.piece.color, PieceType::Rook));
+			let rook_pos_after_castle = last_move.from() + castle_state.direction();
 			self[rook_pos_after_castle] = None;
 		}
 
-		self.to_move = mov.piece.color;
-		self.castle_legality = mov.previous_castle_legality;
-		self.en_passant_target = mov.previous_en_passant;
+		self.to_move = last_move.piece.color;
+		self.castle_legality = last_move.previous_castle_legality;
+		self.en_passant_target = last_move.previous_en_passant;
 
 		self.recalculate_legal_moves();
+		Some(last_move)
 	}
 
 	fn recalculate_legal_moves(&mut self)
@@ -559,11 +561,13 @@ impl Board
 						.flatten()
 				});
 
-				direct_attacker
+				let mut attackers = direct_attacker
 					.iter()
 					.copied()
 					.chain(discovered_attackers)
-					.collect()
+					.collect::<Vec<_>>();
+				attackers.dedup();
+				attackers
 			},
 		)
 	}
@@ -835,7 +839,7 @@ impl Board
 			let mut count = 0;
 			for mov in Vec::from(self.legal_moves())
 			{
-				let played_move = self.make_move(mov);
+				self.make_move(mov);
 				let current = self.perft_recursive(depth - 1, original_depth, per_mvoe);
 				count += current;
 
@@ -843,7 +847,7 @@ impl Board
 				{
 					per_mvoe.push((mov, current));
 				}
-				self.unmake_move(&played_move);
+				self.unmake_move();
 			}
 
 			count

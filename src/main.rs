@@ -150,10 +150,7 @@ impl eframe::App for Application
 						let undo_button = ui.button("Undo");
 						if undo_button.clicked()
 						{
-							if let Some(last_move) = &self.played_moves.pop_front()
-							{
-								self.board.unmake_move(last_move);
-							}
+							self.board.unmake_move();
 						}
 					}
 

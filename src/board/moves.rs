@@ -87,12 +87,14 @@ impl PlayedMove
 		// 		.then(|| self.to() - self.piece.forward_vector()),
 		// )
 
-		iter::once(self.capture.map(|c| c.pos))
-			.chain(iter::once(
+		// im afraid of there being a reason i originally made this do the capture position first
+		iter::once(self.from()).chain(
+			iter::once(
 				self.is_en_passant()
 					.then(|| self.to() - self.piece.forward_vector()),
-			))
-			.flatten()
+			)
+			.flatten(),
+		)
 	}
 
 	pub fn check_state(&self) -> CheckState
