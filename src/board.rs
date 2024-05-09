@@ -329,18 +329,7 @@ impl Board
 			.then(|| mov.to - piece.forward_vector());
 		self.to_move = !self.to_move;
 
-		let check_state = CheckState::None; // if self.pseudo_legal_moves_for_color(!piece.color).is_empty()
-									// {
-									// 	CheckState::Checkmate
-									// }
-									// else if self.is_king_in_check(!piece.color)
-									// {
-									// 	CheckState::Check
-									// }
-									// else
-									// {
-									// 	CheckState::None
-									// };
+		let check_state = CheckState::None;
 
 		let played = PlayedMove {
 			mov,
@@ -351,6 +340,11 @@ impl Board
 			previous_castle_legality,
 			previous_en_passant,
 		};
+
+		if let Some(promotion) = mov.promotion
+		{
+			self[mov.to] = self[mov.to].map(|piece| piece.promote_to(promotion));
+		}
 
 		self.previous_moves.push_front(played.clone());
 

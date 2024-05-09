@@ -13,14 +13,14 @@ macro_rules! color {
 
 use clap::{Parser, Subcommand};
 use eframe::{
-	egui::{self, Align2, Color32, Context, FontId, Image, Rect, Rounding, Sense, Ui, Vec2},
+	egui::{self, Align2, Color32, Context, FontId, Image, Pos2, Rect, Rounding, Sense, Ui, Vec2},
 	epaint::Hsva,
 };
 
 use chess::{
 	board::{
-		moves::{CheckState, Move, PlayedMove},
-		pieces::Color,
+		moves::{CheckState, Move, PlayedMove, PromotionPiece},
+		pieces::{Color, Piece, PieceType},
 		Board, Pos,
 	},
 	engine::Engine,
@@ -64,6 +64,8 @@ fn start_gui_game() -> Result<(), eframe::Error>
 	)
 }
 
+// shut up its fine (the bot ones should probably become an enum tho) -morgan 2024-05-09
+#[allow(clippy::struct_excessive_bools)]
 struct Application
 {
 	dark_square_color: Hsva,
@@ -73,6 +75,8 @@ struct Application
 
 	last_interacted_pos: Option<Pos>,
 	dragging_index: Option<usize>,
+	move_awaiting_promotion: Option<Move>,
+	awaiting_promotion_pieces: Vec<(Pos, PromotionPiece)>,
 
 	loadable_fen: String,
 	current_fen: String,
@@ -92,9 +96,14 @@ impl Default for Application
 		Self {
 			dark_square_color: hsva_from_color32(color!(0xb58863)),
 			light_square_color: hsva_from_color32(color!(0xf0d9b5)),
+
 			board: Board::default(),
+
 			dragging_index: None,
 			last_interacted_pos: None,
+			move_awaiting_promotion: None,
+			awaiting_promotion_pieces: Vec::with_capacity(4),
+
 			current_fen: String::new(),
 			loadable_fen: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
 
@@ -214,14 +223,7 @@ impl Application
 			let is_held = self.dragging_index.is_some_and(|it| it == i);
 			let board_pos = Pos::from_index(i);
 
-			let tile_rect = Rect::from_min_size(
-				board_rect.left_top()
-					+ (Vec2::new(
-						f32::from(board_pos.file()),
-						f32::from(board_pos.top_down_rank()),
-					) * tile_size),
-				Vec2::splat(tile_size),
-			);
+			let tile_rect = tile_rect(board_rect.left_top(), tile_size, board_pos);
 
 			// base square
 			painter.rect_filled(
@@ -374,6 +376,39 @@ impl Application
 				);
 			}
 		}
+
+		if let Some(promotable_move) = self.move_awaiting_promotion
+		{
+			// gray out board
+			painter.rect_filled(
+				board_rect,
+				Rounding::ZERO,
+				Color32::from_rgba_premultiplied(0, 0, 0, 0xa7),
+			);
+
+			let playing_color = self.board.to_move();
+
+			self.awaiting_promotion_pieces.clear();
+			// draw peice selection
+			for (i, promotion_piece) in PromotionPiece::LIST.iter().enumerate()
+			{
+				#[allow(clippy::cast_possible_wrap)]
+				let drawing_pos = promotable_move.to - (i as i32 * playing_color.forward_vector());
+				let tile_rect = tile_rect(board_rect.left_top(), tile_size, drawing_pos);
+
+				painter.circle_filled(
+					tile_rect.center(),
+					tile_rect.width() / 2.0,
+					Color32::from_rgb(0x80, 0x80, 0x80),
+				);
+
+				let draw_piece = PieceType::from(*promotion_piece).with_color(playing_color);
+				Image::new(draw_piece.icon()).paint_at(ui, tile_rect);
+
+				self.awaiting_promotion_pieces
+					.push((drawing_pos, *promotion_piece));
+			}
+		}
 	}
 }
 impl eframe::App for Application
@@ -413,32 +448,70 @@ impl eframe::App for Application
 				{
 					let board_pos = Pos::from((pointer_pos - board_rect.left_top()) / tile_size);
 
-					if response.drag_started()
-						&& let Some(piece) = self.board[board_pos]
-						&& self.board.to_move() == piece.color
-						&& !self.bot_plays_for(self.board.to_move())
+					if let Some(promotable_move) = self.move_awaiting_promotion
 					{
-						self.dragging_index = Some(board_pos.index());
-						self.last_interacted_pos = Some(Pos::from_index(board_pos.index()));
-					}
-					if response.drag_stopped()
-					{
-						if let Some(old_index) = self.dragging_index
+						if response.clicked()
+							&& let Some((_, promotion_piece)) = self
+								.awaiting_promotion_pieces
+								.iter()
+								.find(|(pos, _)| *pos == board_pos)
 						{
-							self.last_interacted_pos = Some(board_pos);
+							let move_attempt =
+								promotable_move.with_promotion_piece(*promotion_piece);
 
-							let move_attempt = Move::new(Pos::from_index(old_index), board_pos);
+							self.move_awaiting_promotion = None;
 							if self.board.legal_moves().contains(&move_attempt)
 							{
 								self.play_move(move_attempt);
 							}
-							self.dragging_index = None;
+						}
+					}
+					else
+					{
+						if response.drag_started()
+							&& let Some(piece) = self.board[board_pos]
+							&& self.board.to_move() == piece.color
+							&& !self.bot_plays_for(self.board.to_move())
+						{
+							self.dragging_index = Some(board_pos.index());
+							self.last_interacted_pos = Some(Pos::from_index(board_pos.index()));
+						}
+						if response.drag_stopped()
+						{
+							if let Some(old_index) = self.dragging_index
+							{
+								self.last_interacted_pos = Some(board_pos);
+
+								let move_attempt = Move::new(Pos::from_index(old_index), board_pos);
+								if move_attempt.to.in_promotion_rank()
+									&& self.board[move_attempt.from].is_some_and(Piece::is_pawn)
+								{
+									self.move_awaiting_promotion = Some(move_attempt);
+								}
+								else if self.board.legal_moves().contains(&move_attempt)
+								{
+									self.play_move(move_attempt);
+								}
+								self.dragging_index = None;
+							}
 						}
 					}
 				}
 			});
 		});
 	}
+}
+
+fn tile_rect(board_top_left: Pos2, tile_size: f32, board_pos: Pos) -> Rect
+{
+	Rect::from_min_size(
+		board_top_left
+			+ (Vec2::new(
+				f32::from(board_pos.file()),
+				f32::from(board_pos.top_down_rank()),
+			) * tile_size),
+		Vec2::splat(tile_size),
+	)
 }
 
 #[derive(Parser)]

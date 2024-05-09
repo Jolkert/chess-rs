@@ -17,6 +17,11 @@ impl Piece
 		Self { piece_type, color }
 	}
 
+	pub fn with_pos(self, pos: Pos) -> PositionedPiece
+	{
+		PositionedPiece::new(pos, self)
+	}
+
 	pub fn from_char(fen_char: char) -> Option<Self>
 	{
 		let piece_type = match fen_char
@@ -48,6 +53,11 @@ impl Piece
 	pub fn is_king(self) -> bool
 	{
 		self.piece_type == PieceType::King
+	}
+
+	pub fn promote_to(self, promotion: PromotionPiece) -> Self
+	{
+		Self::new(self.color, promotion.into())
 	}
 
 	pub fn is_sliding(self) -> bool
@@ -210,6 +220,16 @@ impl From<PromotionPiece> for PieceType
 			PromotionPiece::Rook => Self::Rook,
 			PromotionPiece::Bishop => Self::Bishop,
 			PromotionPiece::Knight => Self::Knight,
+		}
+	}
+}
+impl PieceType
+{
+	pub fn with_color(self, color: Color) -> Piece
+	{
+		Piece {
+			piece_type: self,
+			color,
 		}
 	}
 }

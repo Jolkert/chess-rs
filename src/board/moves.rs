@@ -1,7 +1,7 @@
 use std::{fmt::Display, iter};
 
 use super::{
-	pieces::{Color, Piece},
+	pieces::{Color, Piece, PieceType},
 	Pos, Vec2i,
 };
 
@@ -72,6 +72,26 @@ pub enum PromotionPiece
 	Bishop,
 	Knight,
 }
+impl PromotionPiece
+{
+	pub const LIST: [Self; 4] = [Self::Queen, Self::Knight, Self::Rook, Self::Bishop];
+}
+impl TryFrom<PieceType> for PromotionPiece
+{
+	type Error = ();
+
+	fn try_from(value: PieceType) -> Result<Self, Self::Error>
+	{
+		match value
+		{
+			PieceType::Queen => Ok(Self::Queen),
+			PieceType::Rook => Ok(Self::Rook),
+			PieceType::Bishop => Ok(Self::Bishop),
+			PieceType::Knight => Ok(Self::Knight),
+			_ => Err(()),
+		}
+	}
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayedMove
@@ -90,13 +110,23 @@ impl Display for PlayedMove
 	{
 		match self.castle_state
 		{
-			None => write!(
-				f,
-				"{}{}{}",
-				self.piece.piece_type,
-				self.capture.is_some().then_some("x").unwrap_or_default(),
-				self.mov.to
-			),
+			None =>
+			{
+				// ew -morgan 2024-05-09
+				let mut ret = write!(
+					f,
+					"{}{}{}",
+					self.piece.piece_type,
+					self.capture.is_some().then_some("x").unwrap_or_default(),
+					self.mov.to
+				);
+
+				if let Some(promotion) = self.mov.promotion
+				{
+					ret = write!(f, "{}", PieceType::from(promotion));
+				}
+				ret
+			}
 			Some(CastleSide::Kingside) => write!(f, "O-O"),
 			Some(CastleSide::Queenside) => write!(f, "O-O-O"),
 		}
