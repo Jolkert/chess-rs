@@ -695,7 +695,7 @@ impl Board
 			PieceType::Pawn =>
 			{
 				let forward = piece.forward_vector();
-				Vec::from([
+				vec![
 					pos.checked_move(forward),
 					pos.checked_move(forward + Vec2i::EAST),
 					pos.checked_move(forward + Vec2i::WEST),
@@ -705,7 +705,7 @@ impl Board
 							.is_some_and(|sq| self[sq].is_none()))
 					.then(|| pos.checked_move(2 * forward))
 					.flatten(),
-				])
+				]
 			}
 			PieceType::Knight => Vec::from([
 				pos.checked_move(Vec2i::new(2, 1)),
@@ -739,7 +739,17 @@ impl Board
 		// is this a good idea? -morgan 2024-04-27
 		.into_iter()
 		.flatten()
-		.map(move |target_pos| Move::new(pos, target_pos))
+		.flat_map(move |target_pos| {
+			let mov = Move::new(pos, target_pos);
+			if piece.is_pawn() && mov.to.in_promotion_rank()
+			{
+				Vec::from(mov.into_all_promotions())
+			}
+			else
+			{
+				vec![mov]
+			}
+		})
 		.filter(move |mov| self.is_move_unblocked(piece, *mov))
 	}
 
@@ -1075,6 +1085,14 @@ mod test
 				Piece::new(Color::White, PieceType::Queen)
 			))
 		);
+	}
+
+	#[test]
+	fn promotion_test()
+	{
+		let board = Board::from_fen_string("4k3/6P1/8/8/8/3r1r2/3rpr2/3bKb2 w - - 0 1")
+			.expect("Invalid FEN in test!");
+		assert_eq!(board.legal_moves().len(), 4);
 	}
 
 	// #[test]

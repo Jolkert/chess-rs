@@ -60,6 +60,11 @@ impl Pos
 		char::from_u32(u32::from(self.file()) + 97).expect("Invalid file character!")
 	}
 
+	pub fn in_promotion_rank(self) -> bool
+	{
+		self.rank() == 0 || self.rank() == 7
+	}
+
 	pub fn knight_move_squares(self) -> impl Iterator<Item = Self>
 	{
 		Vec2i::KNIGHT_OFFSETS

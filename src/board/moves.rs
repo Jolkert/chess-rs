@@ -10,12 +10,45 @@ pub struct Move
 {
 	pub from: Pos,
 	pub to: Pos,
+	pub promotion: Option<PromotionPiece>,
 }
 impl Move
 {
 	pub fn new(from: Pos, to: Pos) -> Self
 	{
-		Self { from, to }
+		Self {
+			from,
+			to,
+			promotion: None,
+		}
+	}
+
+	pub fn promote(from: Pos, to: Pos, promotion_piece: PromotionPiece) -> Self
+	{
+		Self {
+			from,
+			to,
+			promotion: Some(promotion_piece),
+		}
+	}
+
+	pub fn with_promotion_piece(self, promotion_piece: PromotionPiece) -> Self
+	{
+		Self {
+			to: self.to,
+			from: self.from,
+			promotion: Some(promotion_piece),
+		}
+	}
+
+	pub fn into_all_promotions(self) -> [Self; 4]
+	{
+		[
+			self.with_promotion_piece(PromotionPiece::Rook),
+			self.with_promotion_piece(PromotionPiece::Bishop),
+			self.with_promotion_piece(PromotionPiece::Knight),
+			self.with_promotion_piece(PromotionPiece::Queen),
+		]
 	}
 
 	pub fn offset(self) -> Vec2i
@@ -29,6 +62,15 @@ impl Display for Move
 	{
 		write!(f, "{}{}", self.from, self.to)
 	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromotionPiece
+{
+	Queen,
+	Rook,
+	Bishop,
+	Knight,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

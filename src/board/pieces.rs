@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::board::Vec2i;
 
-use super::{Direction, Pos, SlidingRay};
+use super::{moves::PromotionPiece, Direction, Pos, SlidingRay};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Piece
@@ -198,6 +198,19 @@ impl Display for PieceType
 				Self::King => "K",
 			}
 		)
+	}
+}
+impl From<PromotionPiece> for PieceType
+{
+	fn from(value: PromotionPiece) -> Self
+	{
+		match value
+		{
+			PromotionPiece::Queen => Self::Queen,
+			PromotionPiece::Rook => Self::Rook,
+			PromotionPiece::Bishop => Self::Bishop,
+			PromotionPiece::Knight => Self::Knight,
+		}
 	}
 }
 
