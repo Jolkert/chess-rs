@@ -17,8 +17,6 @@ use eframe::{
 	epaint::Hsva,
 };
 
-use std::collections::VecDeque;
-
 use chess::{
 	board::{
 		moves::{CheckState, Move, PlayedMove},
@@ -70,21 +68,28 @@ struct Application
 {
 	dark_square_color: Hsva,
 	light_square_color: Hsva,
-	last_interacted_pos: Option<Pos>,
+
 	board: Board,
+
+	last_interacted_pos: Option<Pos>,
 	dragging_index: Option<usize>,
+
 	loadable_fen: String,
 	current_fen: String,
-	played_moves: VecDeque<PlayedMove>,
+
 	side_in_check: Option<Color>,
+
 	engine: Engine,
+	bot_plays_white: bool,
+	bot_plays_black: bool,
+
 	debug_mode: bool,
 }
 impl Application
 {
 	fn last_move(&self) -> Option<&PlayedMove>
 	{
-		self.played_moves.front()
+		self.board.last_move()
 	}
 
 	fn play_move(&mut self, mov: Move)
@@ -94,7 +99,15 @@ impl Application
 		self.current_fen = self.board.fen_string();
 		self.side_in_check =
 			(played_move.check_state() != CheckState::None).then(|| !played_move.piece().color);
-		self.played_moves.push_front(played_move);
+	}
+
+	fn bot_plays_for(&self, color: Color) -> bool
+	{
+		match color
+		{
+			Color::White => self.bot_plays_white,
+			Color::Black => self.bot_plays_black,
+		}
 	}
 }
 impl Default for Application
@@ -110,9 +123,12 @@ impl Default for Application
 			current_fen: String::new(),
 			loadable_fen: String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
 
-			played_moves: VecDeque::new(),
 			side_in_check: None,
+
 			engine: Engine,
+			bot_plays_white: false,
+			bot_plays_black: true,
+
 			debug_mode: false,
 		}
 	}
@@ -190,6 +206,8 @@ impl eframe::App for Application
 							.labelled_by(label.id);
 					});
 
+					ui.checkbox(&mut self.bot_plays_white, "Bot makes white moves");
+					ui.checkbox(&mut self.bot_plays_black, "Bot makes black moves");
 					ui.checkbox(&mut self.debug_mode, "Debug mode");
 				});
 
@@ -364,7 +382,7 @@ impl eframe::App for Application
 				}
 
 				// interaction
-				if self.board.to_move() == Color::Black
+				if self.bot_plays_for(self.board.to_move())
 				{
 					let bot_move = self.engine.generate_move(&self.board);
 					if self.board.legal_moves().contains(&bot_move)
@@ -385,7 +403,7 @@ impl eframe::App for Application
 					if response.drag_started()
 						&& let Some(piece) = self.board[board_pos]
 						&& self.board.to_move() == piece.color
-						&& self.board.to_move() == Color::White
+						&& !self.bot_plays_for(self.board.to_move())
 					{
 						self.dragging_index = Some(board_pos.index());
 						self.last_interacted_pos = Some(Pos::from_index(board_pos.index()));
