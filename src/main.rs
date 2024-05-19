@@ -11,6 +11,8 @@ macro_rules! color {
 	};
 }
 
+use std::str::FromStr;
+
 use clap::{Parser, Subcommand};
 use eframe::{
 	egui::{self, Align2, Color32, Context, FontId, Image, Pos2, Rect, Rounding, Sense, Ui, Vec2},
@@ -28,7 +30,7 @@ use chess::{
 
 fn main()
 {
-	dotenv::dotenv().expect("Could not parse variables from .env file!");
+	let _ = dotenv::dotenv();
 	env_logger::init();
 
 	let args = Arguments::parse();
@@ -40,6 +42,27 @@ fn main()
 			let mut board = Board::from_fen_string(&args.fen).expect("Invalid FEN string!");
 			let perft_results = board.perft(depth);
 			println!("{perft_results}");
+		}
+		Command::Perftree { depth, move_list } =>
+		{
+			let move_list = move_list
+				.map(|str| {
+					str.split_whitespace()
+						.map(Move::from_str)
+						.collect::<Result<Vec<_>, _>>()
+				})
+				.transpose()
+				.expect("Could not parse one or more moves!")
+				.unwrap_or_default();
+
+			let mut board = Board::from_fen_string(&args.fen).expect("Invalid FEN string!");
+			for mov in move_list
+			{
+				log::info!("Attempting move: {mov}");
+				board.make_move(mov);
+			}
+			let perft_results = board.perft(depth);
+			println!("{}", perft_results.perftree_display());
 		}
 	}
 }
@@ -537,6 +560,11 @@ enum Command
 	Perft
 	{
 		depth: u32,
+	},
+	Perftree
+	{
+		depth: u32,
+		move_list: Option<String>,
 	},
 }
 impl Default for Command

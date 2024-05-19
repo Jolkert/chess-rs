@@ -882,6 +882,20 @@ impl PerftResults
 	{
 		&self.per_move
 	}
+
+	pub fn perftree_display(&self) -> String
+	{
+		let mut result = self
+			.per_move
+			.iter()
+			.fold(String::new(), |mut s, (mov, count)| {
+				let _ = writeln!(s, "{mov} {count}");
+				s
+			});
+
+		let _ = write!(result, "\n{}", self.total_nodes);
+		result
+	}
 }
 impl Display for PerftResults
 {

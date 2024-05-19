@@ -1,5 +1,5 @@
 use eframe::egui::Vec2;
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use super::pieces::SlidingAxis;
 
@@ -154,6 +154,35 @@ impl Display for Pos
 		write!(f, "{}{}", self.file_char(), self.rank() + 1)
 	}
 }
+
+impl FromStr for Pos
+{
+	type Err = ParsePosError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err>
+	{
+		if s.len() != 2
+		{
+			Err(ParsePosError)
+		}
+		else
+		{
+			let file_index =
+				(s.chars().nth(0).ok_or(ParsePosError)?.to_ascii_lowercase() as u8) - 97;
+			let rank_index = s
+				.chars()
+				.nth(1)
+				.and_then(|ch| ch.to_digit(10))
+				.map(|digit| (digit - 1) as u8)
+				.ok_or(ParsePosError)?;
+
+			Ok(Self::from_file_rank(file_index, rank_index))
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ParsePosError;
 
 impl Pos
 {

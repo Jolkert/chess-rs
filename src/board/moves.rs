@@ -1,8 +1,8 @@
-use std::{fmt::Display, iter};
+use std::{fmt::Display, iter, str::FromStr};
 
 use super::{
 	pieces::{Color, Piece, PieceType},
-	Pos, Vec2i,
+	ParsePosError, Pos, Vec2i,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +63,47 @@ impl Display for Move
 		write!(f, "{}{}", self.from, self.to)
 	}
 }
+impl FromStr for Move
+{
+	type Err = ParseMoveError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err>
+	{
+		if s.len() < 4 || s.len() > 5
+		{
+			Err(ParseMoveError)
+		}
+		else
+		{
+			let from = Pos::from_str(&s[0..=1])?;
+			let to = Pos::from_str(&s[2..=3])?;
+			let promotion = s.chars().nth(4).map(PromotionPiece::try_from).transpose()?;
+
+			Ok(Self {
+				from,
+				to,
+				promotion,
+			})
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ParseMoveError;
+impl From<ParsePosError> for ParseMoveError
+{
+	fn from(_value: ParsePosError) -> Self
+	{
+		Self
+	}
+}
+impl From<()> for ParseMoveError
+{
+	fn from(_value: ()) -> Self
+	{
+		Self
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromotionPiece
@@ -88,6 +129,22 @@ impl TryFrom<PieceType> for PromotionPiece
 			PieceType::Rook => Ok(Self::Rook),
 			PieceType::Bishop => Ok(Self::Bishop),
 			PieceType::Knight => Ok(Self::Knight),
+			_ => Err(()),
+		}
+	}
+}
+impl TryFrom<char> for PromotionPiece
+{
+	type Error = ();
+
+	fn try_from(value: char) -> Result<Self, Self::Error>
+	{
+		match value.to_ascii_lowercase()
+		{
+			'q' => Ok(Self::Queen),
+			'r' => Ok(Self::Rook),
+			'b' => Ok(Self::Bishop),
+			'n' => Ok(Self::Knight),
 			_ => Err(()),
 		}
 	}
