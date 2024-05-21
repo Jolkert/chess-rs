@@ -97,7 +97,7 @@ impl Board
 	fn fen_regex() -> &'static Regex
 	{
 		lazy_regex::regex!(
-			r"(?<pieces>(?:[pnrbkqPNRBKQ1-8]+/){7}[pnrbkqPNRBKQ1-8]+)\s+(?<to_move>[wb])\s+(?<castle>\-|[KQkq]+)\s(?<en_passant>\-|[a-h][36])\s(?<halfmove>\d+)\s(?<fullmove>\d+)"
+			r"(?<pieces>(?:[pnrbkqPNRBKQ1-8]+/){7}[pnrbkqPNRBKQ1-8]+)\s+(?<to_move>[wb])\s+(?<castle>\-|[KQkq]+)\s(?<en_passant>\-|[a-h][36])(?:\s(?<halfmove>\d+)\s(?<fullmove>\d+))?"
 		)
 	}
 	pub fn from_fen_string(fen: &str) -> Option<Self>
@@ -424,7 +424,7 @@ impl Board
 			all_attackers.len() < 2 && {
 				let en_passant_vacant_square = self
 					.is_move_en_passant(mov)
-					.then(|| mov.from - moving_piece.forward_vector());
+					.then(|| mov.to - moving_piece.forward_vector());
 
 				let king_to_move_start = king_pos.offset_to(mov.from);
 
@@ -843,6 +843,10 @@ impl Board
 		if depth == 0
 		{
 			1
+		}
+		else if depth == 1
+		{
+			self.legal_moves().len() as u64
 		}
 		else
 		{

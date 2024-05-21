@@ -60,7 +60,15 @@ impl Display for Move
 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
 	{
-		write!(f, "{}{}", self.from, self.to)
+		write!(
+			f,
+			"{}{}{}",
+			self.from,
+			self.to,
+			self.promotion
+				.map(|promo_piece| promo_piece.to_string())
+				.unwrap_or_default()
+		)
 	}
 }
 impl FromStr for Move
@@ -116,6 +124,17 @@ pub enum PromotionPiece
 impl PromotionPiece
 {
 	pub const LIST: [Self; 4] = [Self::Queen, Self::Knight, Self::Rook, Self::Bishop];
+
+	fn char(self) -> char
+	{
+		match self
+		{
+			Self::Queen => 'q',
+			Self::Rook => 'r',
+			Self::Bishop => 'b',
+			Self::Knight => 'n',
+		}
+	}
 }
 impl TryFrom<PieceType> for PromotionPiece
 {
@@ -147,6 +166,13 @@ impl TryFrom<char> for PromotionPiece
 			'n' => Ok(Self::Knight),
 			_ => Err(()),
 		}
+	}
+}
+impl Display for PromotionPiece
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		write!(f, "{}", self.char())
 	}
 }
 
