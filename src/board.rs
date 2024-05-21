@@ -404,14 +404,14 @@ impl Board
 				![mov.from, mov.from + move_direction, mov.to]
 					.into_iter()
 					.any(|sq| {
-						self.pieces_targeting(sq, moving_piece.color)
+						self.pieces_targeting(sq, moving_piece.color, [Some(mov.from)])
 							.next()
 							.is_some()
 					})
 			}
 			else
 			{
-				self.pieces_targeting(mov.to, moving_piece.color)
+				self.pieces_targeting(mov.to, moving_piece.color, [Some(mov.from)])
 					.next()
 					.is_none()
 			}
@@ -439,7 +439,8 @@ impl Board
 							[Some(mov.from), Some(mov.to), en_passant_vacant_square],
 						)
 						.is_some_and(|hit_piece| {
-							hit_piece.can_slide_in_direction(ray.direction)
+							ray.first_hit(hit_piece.pos(), mov.to).unwrap() == hit_piece.pos()
+								&& hit_piece.can_slide_in_direction(ray.direction)
 								&& hit_piece.color() != moving_piece.color
 						})
 					});
@@ -489,10 +490,11 @@ impl Board
 			.unwrap_or_else(|| mov.to - self[mov.from].unwrap().forward_vector())
 	}
 
-	fn pieces_targeting(
+	fn pieces_targeting<const N: usize>(
 		&self,
 		target_pos: Pos,
 		target_color: Color,
+		ignore: [Option<Pos>; N],
 	) -> impl Iterator<Item = PositionedPiece> + '_
 	{
 		let knight_squares = target_pos.knight_move_squares().filter(move |pos| {
@@ -504,8 +506,8 @@ impl Board
 			self[*pos].is_some_and(|piece| piece.color != target_color && piece.is_king())
 		});
 		let pawn_squares = [
-			target_pos.move_by(Vec2i::EAST + target_color.forward_vector()),
-			target_pos.move_by(Vec2i::WEST + target_color.forward_vector()),
+			target_pos.move_by(Vec2i::EAST - target_color.forward_vector()),
+			target_pos.move_by(Vec2i::WEST - target_color.forward_vector()),
 		]
 		.into_iter()
 		.flatten()
@@ -513,7 +515,7 @@ impl Board
 			self[*pos].is_some_and(|piece| piece.color != target_color && piece.is_pawn())
 		});
 		let sliding_pieces = self
-			.sliding_pieces_targeting(target_pos)
+			.sliding_pieces_targeting(target_pos, ignore)
 			.filter(move |piece| piece.color() != target_color);
 		sliding_pieces.chain(
 			knight_squares
@@ -527,7 +529,7 @@ impl Board
 	{
 		let king_pos = self.king_pos(color);
 		self.last_move().map_or_else(
-			|| self.pieces_targeting(king_pos, color).collect(),
+			|| self.pieces_targeting(king_pos, color, []).collect(),
 			|last_move| {
 				let direct_attacker = self[last_move.to()].and_then(|attacker| {
 					let positioned_attacker = PositionedPiece::new(last_move.to(), attacker);
@@ -547,8 +549,8 @@ impl Board
 								self.first_piece_in(SlidingRay::new(king_pos, direction_from_king));
 
 							potential_attacker.and_then(|piece| {
-								piece
-									.can_slide_in_direction(direction_from_king)
+								(piece.can_slide_in_direction(direction_from_king)
+									&& piece.color() != color)
 									.then_some(piece)
 							})
 						})
@@ -566,12 +568,16 @@ impl Board
 		)
 	}
 
-	fn sliding_pieces_targeting(&self, from: Pos) -> impl Iterator<Item = PositionedPiece> + '_
+	fn sliding_pieces_targeting<const N: usize>(
+		&self,
+		from: Pos,
+		ignore: [Option<Pos>; N],
+	) -> impl Iterator<Item = PositionedPiece> + '_
 	{
 		SlidingAxis::Both
 			.allowed_directions()
 			.filter_map(move |direction| {
-				self.first_piece_in(SlidingRay::new(from, *direction))
+				self.first_piece_ignoring(SlidingRay::new(from, *direction), ignore)
 					.and_then(|piece| piece.can_slide_in_direction(*direction).then_some(piece))
 			})
 	}
